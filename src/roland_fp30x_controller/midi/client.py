@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import time
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from typing import Any
 
 import mido
@@ -12,8 +12,13 @@ mido.set_backend("mido.backends.rtmidi")
 class MidiOutClient:
     """Salida MIDI (mido + backend python-rtmidi)."""
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        *,
+        trace_send: Callable[[mido.Message], None] | None = None,
+    ) -> None:
         self._port: Any = None
+        self._trace_send = trace_send
 
     @property
     def is_open(self) -> bool:
@@ -32,6 +37,8 @@ class MidiOutClient:
         if self._port is None:
             msg = "No hay puerto MIDI de salida abierto"
             raise RuntimeError(msg)
+        if self._trace_send is not None:
+            self._trace_send(message)
         self._port.send(message)
 
     def send_all(self, messages: Iterable[mido.Message]) -> None:

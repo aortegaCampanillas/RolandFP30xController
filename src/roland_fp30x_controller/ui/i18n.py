@@ -9,6 +9,7 @@ Lang = Literal["en", "es"]
 STRINGS: dict[Lang, dict[str, str]] = {
     "en": {
         "window_title": "Roland FP-30X Controller",
+        "group_configuration": "Configuration",
         "group_main": "Main",
         "label_language": "Language",
         "label_device": "Device:",
@@ -20,7 +21,6 @@ STRINGS: dict[Lang, dict[str, str]] = {
             "SysEx “Master Volume” (universal MIDI). If the piano does not respond, "
             "use part volume (CC 7) in Mix."
         ),
-        "group_tone": "Tone (Roland MIDI list)",
         "group_mix": "Mix (part Control Change)",
         "mix_volume": "Volume (CC 7)",
         "mix_expression": "Expression (CC 11)",
@@ -36,9 +36,10 @@ STRINGS: dict[Lang, dict[str, str]] = {
         "pedal_sustain": "Hold 1 / sustain pedal (CC 64)",
         "btn_reset_defaults": "Reset to defaults",
         "status_no_midi": "No MIDI connection.",
-        "status_output_ports": "Output devices: {n}",
+        "status_midi_ports": "MIDI outputs: {no} · inputs: {ni}",
         "status_disconnected": "Disconnected.",
         "status_connected": "Connected to: {name}",
+        "status_connected_sync": "Connected — output: {out} · piano input: {inn}.",
         "err_no_port": "No MIDI output device is available.",
         "err_open_port": "Could not open device:\n{error}",
         "status_defaults_offline": "Defaults restored (no MIDI sent).",
@@ -53,9 +54,17 @@ STRINGS: dict[Lang, dict[str, str]] = {
         ),
         "latch_suffix": " (latch Note On/Off)",
         "dlg_midi": "MIDI",
+        "warn_input_open": (
+            "Could not open MIDI input; tone sync from the piano is disabled.\n{error}"
+        ),
+        "status_tone_from_piano": "Tone from piano: {name}",
+        "status_piano_tone_unknown": (
+            "Piano tone not in the list (MSB {msb} LSB {lsb} program {pdoc})."
+        ),
     },
     "es": {
         "window_title": "Controlador Roland FP-30X",
+        "group_configuration": "Configuración",
         "group_main": "Principal",
         "label_language": "Idioma",
         "label_device": "Dispositivo:",
@@ -67,7 +76,6 @@ STRINGS: dict[Lang, dict[str, str]] = {
             "SysEx «Master Volume» (MIDI universal). Si el piano no reacciona, "
             "usa el volumen de la parte (CC 7) en Mezcla."
         ),
-        "group_tone": "Tono (lista MIDI Roland)",
         "group_mix": "Mezcla (Control Change por parte)",
         "mix_volume": "Volumen (CC 7)",
         "mix_expression": "Expresión (CC 11)",
@@ -83,9 +91,10 @@ STRINGS: dict[Lang, dict[str, str]] = {
         "pedal_sustain": "Hold 1 / sostenuto pedal (CC 64)",
         "btn_reset_defaults": "Restablecer valores por defecto",
         "status_no_midi": "Sin conexión MIDI.",
-        "status_output_ports": "Dispositivos de salida: {n}",
+        "status_midi_ports": "MIDI salidas: {no} · entradas: {ni}",
         "status_disconnected": "Desconectado.",
         "status_connected": "Conectado a: {name}",
+        "status_connected_sync": "Conectado — salida: {out} · entrada piano: {inn}.",
         "err_no_port": "No hay ningún dispositivo de salida disponible.",
         "err_open_port": "No se pudo abrir el dispositivo:\n{error}",
         "status_defaults_offline": "Valores restablecidos por defecto (sin enviar MIDI).",
@@ -100,6 +109,14 @@ STRINGS: dict[Lang, dict[str, str]] = {
         ),
         "latch_suffix": " (enganche Note On/Off)",
         "dlg_midi": "MIDI",
+        "warn_input_open": (
+            "No se pudo abrir la entrada MIDI; la sincronización de tono desde el "
+            "piano está desactivada.\n{error}"
+        ),
+        "status_tone_from_piano": "Tono desde el piano: {name}",
+        "status_piano_tone_unknown": (
+            "Tono del piano no está en la lista (MSB {msb} LSB {lsb} programa {pdoc})."
+        ),
     },
 }
 
