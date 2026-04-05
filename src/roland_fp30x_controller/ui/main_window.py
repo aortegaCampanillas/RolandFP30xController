@@ -26,6 +26,7 @@ from roland_fp30x_controller.midi import messages as midix
 from roland_fp30x_controller.midi.bank_program_parser import BankProgramParser
 from roland_fp30x_controller.midi.client import MidiOutClient
 from roland_fp30x_controller.midi.ports import list_input_names, list_output_names
+from roland_fp30x_controller.midi.rpn_parser import RpnParser, parse_master_coarse_tuning_sysex
 from roland_fp30x_controller.midi.tone_catalog import TONE_PRESETS, Tone
 from roland_fp30x_controller.ui.i18n import Lang, tr
 from roland_fp30x_controller.ui.midi_in_worker import MidiInWorker
@@ -41,12 +42,14 @@ DEFAULT_MODULATION = 0
 DEFAULT_REVERB = 40
 DEFAULT_CHORUS = 0
 DEFAULT_MASTER_VOLUME = 127
+DEFAULT_TRANSPOSE = 0
 
 # Retardo tras el último movimiento del slider antes de enviar CC (teclado y ratón).
 MIX_CC_DEBOUNCE_MS = 55
 MASTER_VOL_DEBOUNCE_MS = 55
 # Tras enviar banco/programa desde la app, ignorar eco del piano (segundos).
 PIANO_PATCH_IGNORE_S = 0.55
+PORT_WATCHDOG_MS = 1000
 
 
 def _cc_slider(
@@ -76,7 +79,9 @@ class MainWindow(QMainWindow):
         self._midi_in_worker: MidiInWorker | None = None
         # Entrada: canal 1 (transmisión típica panel FP-30X) y 4 (parte lista MIDI).
         self._bank_parser = BankProgramParser((1, MIDI_PART_CHANNEL))
+        self._rpn_parser = RpnParser((1, MIDI_PART_CHANNEL))
         self._ignore_piano_patch_until = 0.0
+        self._transpose_known = False
         self._tone_combo_populating = False
         self._syncing_tone_widgets = False
         self._suppress_mix_slider_midi = False
@@ -84,6 +89,10 @@ class MainWindow(QMainWindow):
         self._master_vol_debounce_timer = QTimer(self)
         self._master_vol_debounce_timer.setSingleShot(True)
         self._master_vol_debounce_timer.timeout.connect(lambda: self._send_master_volume())
+        self._port_watchdog_timer = QTimer(self)
+        self._port_watchdog_timer.setInterval(PORT_WATCHDOG_MS)
+        self._port_watchdog_timer.timeout.connect(self._check_connected_ports)
+        self._port_watchdog_timer.start()
 
         central = QWidget()
         self.setCentralWidget(central)
@@ -163,6 +172,10 @@ class MainWindow(QMainWindow):
         self._update_connect_button_text()
         self._group_main.setTitle(self._tr("group_main"))
         self._label_master_vol.setText(self._tr("label_master_volume"))
+        self._label_transpose.setText(self._tr("label_transpose"))
+        self._label_instrument.setText(self._tr("label_instrument"))
+        self._test_metronome_btn.setText(self._tr("btn_test_metronome"))
+        self._transpose_sld.setToolTip(self._tr("tooltip_transpose"))
         self._master_sld.setToolTip(self._tr("tooltip_master_volume"))
         self._group_mix.setTitle(self._tr("group_mix"))
         self._vol_lbl.setText(self._tr("mix_volume"))
@@ -252,6 +265,28 @@ class MainWindow(QMainWindow):
         master_row.addWidget(self._master_lbl)
         v.addLayout(master_row)
 
+        transpose_row = QHBoxLayout()
+        self._label_transpose = QLabel()
+        self._transpose_sld = QSlider(Qt.Orientation.Horizontal)
+        self._transpose_sld.setRange(-24, 24)
+        self._transpose_sld.setValue(DEFAULT_TRANSPOSE)
+        self._transpose_sld.setTracking(True)
+        self._transpose_lbl = QLabel(f"{DEFAULT_TRANSPOSE:+d}")
+        self._transpose_lbl.setMinimumWidth(36)
+        self._transpose_lbl.setAlignment(
+            Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
+        )
+        self._transpose_sld.valueChanged.connect(
+            lambda v: self._sync_transpose_label(v if self._transpose_known else None)
+        )
+        self._transpose_sld.valueChanged.connect(self._on_transpose_changed)
+        transpose_row.addWidget(self._label_transpose)
+        transpose_row.addWidget(self._transpose_sld, stretch=1)
+        transpose_row.addWidget(self._transpose_lbl)
+        v.addLayout(transpose_row)
+
+        instrument_row = QHBoxLayout()
+        self._label_instrument = QLabel()
         self._tone_combo = QComboBox()
         self._tone_combo.setMaxVisibleItems(30)
         self._tone_combo_populating = True
@@ -261,7 +296,16 @@ class MainWindow(QMainWindow):
         finally:
             self._tone_combo_populating = False
         self._tone_combo.currentIndexChanged.connect(self._on_tone_combo_index_changed)
-        v.addWidget(self._tone_combo)
+        instrument_row.addWidget(self._label_instrument)
+        instrument_row.addWidget(self._tone_combo, stretch=1)
+        v.addLayout(instrument_row)
+
+        test_row = QHBoxLayout()
+        self._test_metronome_btn = QPushButton()
+        self._test_metronome_btn.clicked.connect(self._send_metronome_probe)
+        test_row.addWidget(self._test_metronome_btn)
+        test_row.addStretch(1)
+        v.addLayout(test_row)
         return self._group_main
 
     def _build_mix_group(self) -> QWidget:
@@ -320,24 +364,85 @@ class MainWindow(QMainWindow):
         return self._group_pedal
 
     def closeEvent(self, event: QCloseEvent) -> None:
+        self._port_watchdog_timer.stop()
         self._cancel_mix_and_master_debounce()
         self._stop_midi_in_worker()
         self._midi.close()
         super().closeEvent(event)
 
     def _stop_midi_in_worker(self) -> None:
-        if self._midi_in_worker is None:
+        worker = self._midi_in_worker
+        if worker is None:
             return
         try:
-            self._midi_in_worker.message_received.disconnect(self._on_midi_in_message)
+            worker.message_received.disconnect(self._on_midi_in_message)
         except (RuntimeError, TypeError):
             pass
-        self._midi_in_worker.stop_safely()
-        self._midi_in_worker.wait(5000)
+        try:
+            worker.port_lost.disconnect(self._on_midi_in_port_lost)
+        except (RuntimeError, TypeError):
+            pass
+        worker.stop_safely()
+        worker.wait(2000)
         self._midi_in_worker = None
 
     def _mark_app_bank_tx(self) -> None:
         self._ignore_piano_patch_until = time.monotonic() + PIANO_PATCH_IGNORE_S
+
+    def _sync_transpose_label(self, value: int | None) -> None:
+        self._transpose_lbl.setText("--" if value is None else f"{value:+d}")
+
+    def _set_transpose_ui(self, value: int, *, known: bool, emit_status: bool = False) -> None:
+        self._transpose_known = known
+        self._transpose_sld.blockSignals(True)
+        self._transpose_sld.setValue(value)
+        self._transpose_sld.blockSignals(False)
+        self._sync_transpose_label(value if known else None)
+        if emit_status:
+            if known:
+                self._set_status(self._tr("status_transpose_from_piano", value=value))
+            else:
+                self._set_status(self._tr("status_transpose_unknown"))
+
+    def _disconnect_device(self, *, status_key: str, name: str | None = None) -> None:
+        self._cancel_mix_and_master_debounce()
+        self._stop_midi_in_worker()
+        self._midi.close()
+        self._last_output_port = None
+        self._last_input_port = None
+        self._update_connect_button_text()
+        self._lower_panels.setEnabled(False)
+        if name is None:
+            self._set_status(self._tr(status_key))
+        else:
+            self._set_status(self._tr(status_key, name=name))
+
+    def _check_connected_ports(self) -> None:
+        if not self._midi.is_open or not self._last_output_port:
+            return
+        outs = list_output_names()
+        if self._last_output_port not in outs:
+            self._refresh_ports()
+            self._disconnect_device(
+                status_key="status_device_lost",
+                name=self._last_output_port,
+            )
+            return
+        if self._last_input_port and self._last_input_port not in list_input_names():
+            lost_name = self._last_input_port
+            self._stop_midi_in_worker()
+            self._last_input_port = None
+            self._set_status(self._tr("status_device_lost", name=lost_name))
+            self._refresh_ports()
+
+    def _on_midi_in_port_lost(self, _error: str) -> None:
+        if not self._last_input_port:
+            return
+        lost_name = self._last_input_port
+        self._stop_midi_in_worker()
+        self._last_input_port = None
+        if self._last_output_port and self._midi.is_open:
+            self._set_status(self._tr("status_device_lost", name=lost_name))
 
     def _refresh_ports(self) -> None:
         current = self._port_combo.currentText()
@@ -355,6 +460,16 @@ class MainWindow(QMainWindow):
         if self._verbose:
             self._print_midi_trace("IN", msg)
         if time.monotonic() < self._ignore_piano_patch_until:
+            return
+        transpose_sysex = parse_master_coarse_tuning_sysex(msg)
+        if transpose_sysex is not None:
+            if self._transpose_sld.value() != transpose_sysex or not self._transpose_known:
+                self._set_transpose_ui(transpose_sysex, known=True, emit_status=True)
+            return
+        transpose = self._rpn_parser.feed_coarse_tuning(msg)
+        if transpose is not None:
+            if self._transpose_sld.value() != transpose or not self._transpose_known:
+                self._set_transpose_ui(transpose, known=True, emit_status=True)
             return
         parsed = self._bank_parser.feed(msg)
         if parsed is None:
@@ -382,14 +497,7 @@ class MainWindow(QMainWindow):
 
     def _toggle_connect(self) -> None:
         if self._midi.is_open:
-            self._cancel_mix_and_master_debounce()
-            self._stop_midi_in_worker()
-            self._midi.close()
-            self._last_output_port = None
-            self._last_input_port = None
-            self._update_connect_button_text()
-            self._lower_panels.setEnabled(False)
-            self._set_status(self._tr("status_disconnected"))
+            self._disconnect_device(status_key="status_disconnected")
             return
         name = self._port_combo.currentText().strip()
         if not name:
@@ -408,19 +516,17 @@ class MainWindow(QMainWindow):
             return
         self._last_output_port = name
         self._last_input_port = None
+        self._transpose_known = False
+        self._sync_transpose_label(None)
         self._update_connect_button_text()
         self._lower_panels.setEnabled(True)
-        self._mark_app_bank_tx()
-        self._reapply_full_part_to_device(
-            latch_after_program=False,
-            update_status=False,
-        )
         input_names = list_input_names()
         in_name = name if name in input_names else ""
         if in_name:
             try:
                 worker = MidiInWorker(in_name)
                 worker.message_received.connect(self._on_midi_in_message)
+                worker.port_lost.connect(self._on_midi_in_port_lost)
                 self._midi_in_worker = worker
                 worker.start()
                 self._last_input_port = in_name
@@ -469,6 +575,7 @@ class MainWindow(QMainWindow):
             self._sustain.blockSignals(False)
 
             self._master_sld.setValue(DEFAULT_MASTER_VOLUME)
+            self._set_transpose_ui(DEFAULT_TRANSPOSE, known=True)
         finally:
             self._suppress_mix_slider_midi = False
 
@@ -570,8 +677,13 @@ class MainWindow(QMainWindow):
         self._flush_mix_sliders_to_device()
         self._flush_sustain_pedal_to_device()
         self._send_master_volume()
+        self._send_transpose(update_status=False)
         if update_status:
-            self._set_status(self._tr("status_full_reapply"))
+            self._set_status(
+                self._tr("status_full_reapply")
+                + " "
+                + self._tr("status_transpose_sent", value=self._transpose_sld.value())
+            )
 
     def _send_cc(self, control: int, value: int) -> None:
         if not self._midi.is_open:
@@ -581,8 +693,59 @@ class MainWindow(QMainWindow):
             if control == 91 and value > 0:
                 tail = min(127, max(value, 28))
                 self._midi.send(midix.gm2_global_reverb_parameter(1, tail))
+        except OSError:
+            self._disconnect_device(
+                status_key="status_device_lost",
+                name=self._last_output_port or "?",
+            )
         except (ValueError, RuntimeError) as e:
             self._set_status(str(e))
+
+    def _on_transpose_changed(self, value: int) -> None:
+        if self._suppress_mix_slider_midi:
+            return
+        self._transpose_known = True
+        self._sync_transpose_label(value)
+        if self._midi.is_open:
+            self._send_transpose()
+        else:
+            self._set_status(self._tr("status_transpose_offline", value=value))
+
+    def _send_transpose(self, *, update_status: bool = True) -> None:
+        if not self._midi.is_open:
+            return
+        try:
+            self._midi.send(midix.master_coarse_tuning_realtime(self._transpose_sld.value()))
+        except OSError:
+            self._disconnect_device(
+                status_key="status_device_lost",
+                name=self._last_output_port or "?",
+            )
+            return
+        except (ValueError, RuntimeError) as e:
+            self._set_status(str(e))
+            return
+        if update_status:
+            self._set_status(
+                self._tr("status_transpose_sent", value=self._transpose_sld.value())
+            )
+
+    def _send_metronome_probe(self) -> None:
+        if not self._midi.is_open:
+            self._set_status(self._tr("msg_connect_before_send"))
+            return
+        try:
+            self._midi.send(midix.metronome_probe_on())
+        except OSError:
+            self._disconnect_device(
+                status_key="status_device_lost",
+                name=self._last_output_port or "?",
+            )
+            return
+        except (ValueError, RuntimeError) as e:
+            self._set_status(str(e))
+            return
+        self._set_status(self._tr("status_metronome_probe_sent"))
 
     def _tone_from_combo(self) -> Tone | None:
         idx = self._tone_combo.currentIndex()
@@ -644,6 +807,12 @@ class MainWindow(QMainWindow):
             if latch:
                 time.sleep(midix.POST_PROGRAM_CHANGE_LATCH_DELAY_S)
                 self._midi.send_all_spaced(latch, gap_s=midix.DEFAULT_MESSAGE_GAP_S)
+        except OSError:
+            self._disconnect_device(
+                status_key="status_device_lost",
+                name=self._last_output_port or "?",
+            )
+            return
         except (ValueError, RuntimeError) as e:
             QMessageBox.warning(self, self._tr("dlg_midi"), str(e))
             return
@@ -672,5 +841,10 @@ class MainWindow(QMainWindow):
             return
         try:
             self._midi.send(midix.master_volume_realtime(self._master_sld.value()))
+        except OSError:
+            self._disconnect_device(
+                status_key="status_device_lost",
+                name=self._last_output_port or "?",
+            )
         except (ValueError, RuntimeError) as e:
             self._set_status(str(e))

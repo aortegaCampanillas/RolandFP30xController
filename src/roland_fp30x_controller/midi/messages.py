@@ -2,6 +2,12 @@ from __future__ import annotations
 
 import mido
 
+ROLAND_ID = 0x41
+ROLAND_DEVICE_ID = 0x10
+FP30X_MODEL_ID = (0x00, 0x00, 0x00, 0x28)
+ROLAND_CMD_RQ1 = 0x11
+ROLAND_CMD_DT1 = 0x12
+
 
 def channel_zero(channel_1_16: int) -> int:
     if not 1 <= channel_1_16 <= 16:
@@ -97,6 +103,79 @@ def control_change(channel_1_16: int, control: int, value: int) -> mido.Message:
         msg = "Control y valor deben estar entre 0 y 127"
         raise ValueError(msg)
     return mido.Message("control_change", channel=ch, control=control, value=value)
+
+
+def rpn_coarse_tuning(channel_1_16: int, semitones: int) -> list[mido.Message]:
+    """
+    RPN 0,2 (Coarse Tuning): 64 = 0 semitonos.
+
+    Se envía además Null RPN (127/127) para dejar el selector limpio.
+    """
+    if not -64 <= semitones <= 63:
+        msg = "La transposición debe estar entre -64 y 63 semitonos"
+        raise ValueError(msg)
+    value = semitones + 64
+    return [
+        control_change(channel_1_16, 101, 0),
+        control_change(channel_1_16, 100, 2),
+        control_change(channel_1_16, 6, value),
+        control_change(channel_1_16, 38, 0),
+        control_change(channel_1_16, 101, 127),
+        control_change(channel_1_16, 100, 127),
+    ]
+
+
+def master_coarse_tuning_realtime(semitones: int) -> mido.Message:
+    """
+    Universal Realtime SysEx Master Coarse Tuning.
+
+    FP-30X MIDI Implementation:
+    F0 7F 7F 04 04 ll mm F7
+    ll se ignora; mm = 0x40 + semitonos, rango soportado -24..+24.
+    """
+    if not -24 <= semitones <= 24:
+        msg = "La transposición debe estar entre -24 y 24 semitonos"
+        raise ValueError(msg)
+    return mido.Message("sysex", data=(0x7F, 0x7F, 0x04, 0x04, 0x00, semitones + 0x40))
+
+
+def roland_checksum(values: Iterable[int]) -> int:
+    return (128 - (sum(values) % 128)) % 128
+
+
+def roland_data_request_1(address: tuple[int, int, int, int], size: tuple[int, int, int, int]) -> mido.Message:
+    payload = [*address, *size]
+    return mido.Message(
+        "sysex",
+        data=(
+            ROLAND_ID,
+            ROLAND_DEVICE_ID,
+            *FP30X_MODEL_ID,
+            ROLAND_CMD_RQ1,
+            *payload,
+            roland_checksum(payload),
+        ),
+    )
+
+
+def roland_data_set_1(address: tuple[int, int, int, int], data: Iterable[int]) -> mido.Message:
+    data_tuple = tuple(data)
+    payload = [*address, *data_tuple]
+    return mido.Message(
+        "sysex",
+        data=(
+            ROLAND_ID,
+            ROLAND_DEVICE_ID,
+            *FP30X_MODEL_ID,
+            ROLAND_CMD_DT1,
+            *payload,
+            roland_checksum(payload),
+        ),
+    )
+
+
+def metronome_probe_on() -> mido.Message:
+    return roland_data_set_1((0x01, 0x00, 0x03, 0x06), (0x01,))
 
 
 def master_volume_realtime(value_0_127: int) -> mido.Message:

@@ -3,6 +3,7 @@ from __future__ import annotations
 import mido
 
 from roland_fp30x_controller.midi import messages as midix
+from roland_fp30x_controller.midi.rpn_parser import RpnParser, parse_master_coarse_tuning_sysex
 
 
 def test_channel_zero() -> None:
@@ -59,3 +60,40 @@ def test_bank_program_latch_parts() -> None:
     assert len(core) == 3 and core[-1].type == "program_change"
     assert core[-1].channel == 3
     assert len(latch) == 2
+
+
+def test_rpn_coarse_tuning_sequence() -> None:
+    msgs = midix.rpn_coarse_tuning(4, -5)
+    assert [m.type for m in msgs] == ["control_change"] * 6
+    assert [(m.control, m.value) for m in msgs] == [
+        (101, 0),
+        (100, 2),
+        (6, 59),
+        (38, 0),
+        (101, 127),
+        (100, 127),
+    ]
+    assert all(m.channel == 3 for m in msgs)
+
+
+def test_rpn_parser_detects_coarse_tuning() -> None:
+    p = RpnParser((1, 4))
+    assert p.feed_coarse_tuning(mido.Message("control_change", channel=3, control=101, value=0)) is None
+    assert p.feed_coarse_tuning(mido.Message("control_change", channel=3, control=100, value=2)) is None
+    assert p.feed_coarse_tuning(mido.Message("control_change", channel=3, control=6, value=69)) == 5
+
+
+def test_master_coarse_tuning_realtime_sysex() -> None:
+    m = midix.master_coarse_tuning_realtime(5)
+    assert m.type == "sysex"
+    assert list(m.bytes()) == [0xF0, 0x7F, 0x7F, 0x04, 0x04, 0x00, 0x45, 0xF7]
+
+
+def test_metronome_probe_on_sysex() -> None:
+    m = midix.metronome_probe_on()
+    assert list(m.bytes()) == [0xF0, 0x41, 0x10, 0x00, 0x00, 0x00, 0x28, 0x12, 0x01, 0x00, 0x03, 0x06, 0x01, 0x75, 0xF7]
+
+
+def test_parse_master_coarse_tuning_sysex() -> None:
+    m = mido.Message.from_bytes([0xF0, 0x7F, 0x7F, 0x04, 0x04, 0x00, 0x3C, 0xF7])
+    assert parse_master_coarse_tuning_sysex(m) == -4

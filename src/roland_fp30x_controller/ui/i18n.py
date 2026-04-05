@@ -13,10 +13,16 @@ STRINGS: dict[Lang, dict[str, str]] = {
         "group_main": "Main",
         "label_language": "Language",
         "label_device": "Device:",
+        "label_instrument": "Instrument",
+        "btn_test_metronome": "Test Metronome",
         "btn_refresh": "Refresh",
         "btn_connect": "Connect",
         "btn_disconnect": "Disconnect",
         "label_master_volume": "Master Volume (RT)",
+        "label_transpose": "Transpose",
+        "tooltip_transpose": (
+            "Sends Universal MIDI Master Coarse Tuning. 0 means no transpose."
+        ),
         "tooltip_master_volume": (
             "SysEx “Master Volume” (universal MIDI). If the piano does not respond, "
             "use part volume (CC 7) in Mix."
@@ -38,6 +44,7 @@ STRINGS: dict[Lang, dict[str, str]] = {
         "status_no_midi": "No MIDI connection.",
         "status_midi_ports": "MIDI outputs: {no} · inputs: {ni}",
         "status_disconnected": "Disconnected.",
+        "status_device_lost": "Device disconnected: {name}",
         "status_connected": "Connected to: {name}",
         "status_connected_sync": "Connected — output: {out} · piano input: {inn}.",
         "err_no_port": "No MIDI output device is available.",
@@ -45,6 +52,13 @@ STRINGS: dict[Lang, dict[str, str]] = {
         "status_defaults_offline": "Defaults restored (no MIDI sent).",
         "status_defaults_sent": "Defaults applied and sent to the piano.",
         "status_full_reapply": "Tone, mix, pedal and master sent again to the piano.",
+        "status_transpose_sent": "Transpose sent to the piano: {value:+d} semitones.",
+        "status_transpose_offline": (
+            "Transpose set to {value:+d} semitones; connect MIDI to send it."
+        ),
+        "status_transpose_unknown": "Transpose from piano not read yet.",
+        "status_transpose_from_piano": "Transpose from piano: {value:+d} semitones.",
+        "status_metronome_probe_sent": "Metronome test command sent.",
         "status_preset_offline": (
             'Preset “{name}” selected; connect MIDI to send it to the piano.'
         ),
@@ -68,10 +82,17 @@ STRINGS: dict[Lang, dict[str, str]] = {
         "group_main": "Principal",
         "label_language": "Idioma",
         "label_device": "Dispositivo:",
+        "label_instrument": "Instrumento",
+        "btn_test_metronome": "Probar metrónomo",
         "btn_refresh": "Actualizar",
         "btn_connect": "Conectar",
         "btn_disconnect": "Desconectar",
         "label_master_volume": "Master Volume (RT)",
+        "label_transpose": "Transposición",
+        "tooltip_transpose": (
+            "Envía Master Coarse Tuning del MIDI universal. 0 significa sin "
+            "transposición."
+        ),
         "tooltip_master_volume": (
             "SysEx «Master Volume» (MIDI universal). Si el piano no reacciona, "
             "usa el volumen de la parte (CC 7) en Mezcla."
@@ -93,6 +114,7 @@ STRINGS: dict[Lang, dict[str, str]] = {
         "status_no_midi": "Sin conexión MIDI.",
         "status_midi_ports": "MIDI salidas: {no} · entradas: {ni}",
         "status_disconnected": "Desconectado.",
+        "status_device_lost": "Dispositivo desconectado: {name}",
         "status_connected": "Conectado a: {name}",
         "status_connected_sync": "Conectado — salida: {out} · entrada piano: {inn}.",
         "err_no_port": "No hay ningún dispositivo de salida disponible.",
@@ -100,6 +122,15 @@ STRINGS: dict[Lang, dict[str, str]] = {
         "status_defaults_offline": "Valores restablecidos por defecto (sin enviar MIDI).",
         "status_defaults_sent": "Valores por defecto aplicados y enviados al piano.",
         "status_full_reapply": "Tono, mezcla, pedal y master reenviados al piano.",
+        "status_transpose_sent": "Transposición enviada al piano: {value:+d} semitonos.",
+        "status_transpose_offline": (
+            "Transposición ajustada a {value:+d} semitonos; conecta MIDI para enviarla."
+        ),
+        "status_transpose_unknown": "La transposición del piano aún no se ha leído.",
+        "status_transpose_from_piano": (
+            "Transposición desde el piano: {value:+d} semitonos."
+        ),
+        "status_metronome_probe_sent": "Comando de prueba de metrónomo enviado.",
         "status_preset_offline": (
             "Preset «{name}» seleccionado; conecta MIDI para enviarlo al piano."
         ),
