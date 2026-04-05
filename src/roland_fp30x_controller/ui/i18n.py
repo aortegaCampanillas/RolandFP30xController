@@ -14,7 +14,9 @@ STRINGS: dict[Lang, dict[str, str]] = {
         "label_language": "Language",
         "label_device": "Device:",
         "label_instrument": "Instrument",
-        "btn_test_metronome": "Test Metronome",
+        "btn_metronome_off": "▶ Metronome",
+        "btn_metronome_on": "■ Metronome",
+        "label_tempo": "Tempo (BPM)",
         "btn_refresh": "Refresh",
         "btn_connect": "Connect",
         "btn_disconnect": "Disconnect",
@@ -23,21 +25,7 @@ STRINGS: dict[Lang, dict[str, str]] = {
         "tooltip_transpose": (
             "Sends Universal MIDI Master Coarse Tuning. 0 means no transpose."
         ),
-        "tooltip_master_volume": (
-            "SysEx “Master Volume” (universal MIDI). If the piano does not respond, "
-            "use part volume (CC 7) in Mix."
-        ),
-        "group_mix": "Mix (part Control Change)",
-        "mix_volume": "Volume (CC 7)",
-        "mix_expression": "Expression (CC 11)",
-        "mix_pan": "Pan (CC 10)",
-        "mix_modulation": "Modulation (CC 1)",
-        "mix_reverb": "Reverb send (CC 91)",
-        "mix_chorus": "Chorus send (CC 93)",
-        "tooltip_reverb": (
-            "Part send to the reverb bus (CC 91). Also sends GM2 tail time (SysEx) "
-            "so the change is easier to hear on the FP-30X."
-        ),
+        "tooltip_master_volume": "SysEx Master Volume - updates the piano panel LEDs.",
         "group_pedal": "Pedal",
         "pedal_sustain": "Hold 1 / sustain pedal (CC 64)",
         "btn_reset_defaults": "Reset to defaults",
@@ -51,16 +39,18 @@ STRINGS: dict[Lang, dict[str, str]] = {
         "err_open_port": "Could not open device:\n{error}",
         "status_defaults_offline": "Defaults restored (no MIDI sent).",
         "status_defaults_sent": "Defaults applied and sent to the piano.",
-        "status_full_reapply": "Tone, mix, pedal and master sent again to the piano.",
+        "status_full_reapply": "Tone, pedal and master sent again to the piano.",
         "status_transpose_sent": "Transpose sent to the piano: {value:+d} semitones.",
         "status_transpose_offline": (
             "Transpose set to {value:+d} semitones; connect MIDI to send it."
         ),
         "status_transpose_unknown": "Transpose from piano not read yet.",
         "status_transpose_from_piano": "Transpose from piano: {value:+d} semitones.",
-        "status_metronome_probe_sent": "Metronome test command sent.",
+        "status_master_volume_sent": "Master volume sent: {value}.",
+        "status_metronome_probe_sent": "Metronome toggled.",
+        "status_piano_state_read": "Piano state read: volume {vol}, transpose {tr:+d}, metronome {metro}.",
         "status_preset_offline": (
-            'Preset “{name}” selected; connect MIDI to send it to the piano.'
+            'Preset "{name}" selected; connect MIDI to send it to the piano.'
         ),
         "msg_connect_before_send": "Connect a MIDI output device before sending.",
         "status_bank_line": (
@@ -83,7 +73,9 @@ STRINGS: dict[Lang, dict[str, str]] = {
         "label_language": "Idioma",
         "label_device": "Dispositivo:",
         "label_instrument": "Instrumento",
-        "btn_test_metronome": "Probar metrónomo",
+        "btn_metronome_off": "▶ Metrónomo",
+        "btn_metronome_on": "■ Metrónomo",
+        "label_tempo": "Tempo (BPM)",
         "btn_refresh": "Actualizar",
         "btn_connect": "Conectar",
         "btn_disconnect": "Desconectar",
@@ -93,21 +85,7 @@ STRINGS: dict[Lang, dict[str, str]] = {
             "Envía Master Coarse Tuning del MIDI universal. 0 significa sin "
             "transposición."
         ),
-        "tooltip_master_volume": (
-            "SysEx «Master Volume» (MIDI universal). Si el piano no reacciona, "
-            "usa el volumen de la parte (CC 7) en Mezcla."
-        ),
-        "group_mix": "Mezcla (Control Change por parte)",
-        "mix_volume": "Volumen (CC 7)",
-        "mix_expression": "Expresión (CC 11)",
-        "mix_pan": "Pan (CC 10)",
-        "mix_modulation": "Modulación (CC 1)",
-        "mix_reverb": "Reverb send (CC 91)",
-        "mix_chorus": "Chorus send (CC 93)",
-        "tooltip_reverb": (
-            "Envío de la parte al bus de reverb (CC 91). Además se envía tiempo de cola "
-            "GM2 (SysEx) para que el cambio se note mejor en el FP-30X."
-        ),
+        "tooltip_master_volume": "SysEx Master Volume - actualiza las luces del panel del piano.",
         "group_pedal": "Pedal",
         "pedal_sustain": "Hold 1 / sostenuto pedal (CC 64)",
         "btn_reset_defaults": "Restablecer valores por defecto",
@@ -121,7 +99,7 @@ STRINGS: dict[Lang, dict[str, str]] = {
         "err_open_port": "No se pudo abrir el dispositivo:\n{error}",
         "status_defaults_offline": "Valores restablecidos por defecto (sin enviar MIDI).",
         "status_defaults_sent": "Valores por defecto aplicados y enviados al piano.",
-        "status_full_reapply": "Tono, mezcla, pedal y master reenviados al piano.",
+        "status_full_reapply": "Tono, pedal y master reenviados al piano.",
         "status_transpose_sent": "Transposición enviada al piano: {value:+d} semitonos.",
         "status_transpose_offline": (
             "Transposición ajustada a {value:+d} semitonos; conecta MIDI para enviarla."
@@ -130,7 +108,9 @@ STRINGS: dict[Lang, dict[str, str]] = {
         "status_transpose_from_piano": (
             "Transposición desde el piano: {value:+d} semitonos."
         ),
-        "status_metronome_probe_sent": "Comando de prueba de metrónomo enviado.",
+        "status_master_volume_sent": "Master volume enviado: {value}.",
+        "status_metronome_probe_sent": "Metrónomo conmutado.",
+        "status_piano_state_read": "Estado del piano leído: volumen {vol}, transposición {tr:+d}, metrónomo {metro}.",
         "status_preset_offline": (
             "Preset «{name}» seleccionado; conecta MIDI para enviarlo al piano."
         ),

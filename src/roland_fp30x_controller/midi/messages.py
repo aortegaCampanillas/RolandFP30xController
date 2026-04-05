@@ -174,8 +174,75 @@ def roland_data_set_1(address: tuple[int, int, int, int], data: Iterable[int]) -
     )
 
 
-def metronome_probe_on() -> mido.Message:
+# --- Metrónomo del piano (direcciones extraídas por ingeniería inversa de Roland Piano App 1.5.9) ---
+# metronomeSwToggle  01 00 05 09  First(0) / Repeat(1)
+# metronomeSwitch    01 00 03 1A  Off(0) / On(1) / OnRequestNextStart(2)
+# metronomeStatus    01 00 01 0F  (read) 0=off 1=on
+# sequencerTempoWO   01 00 03 09  (write, 2 bytes) [bpm // 128, bpm % 128]
+# sequencerTempoRO   01 00 01 08  (read,  2 bytes)
+# metronomeBeat      01 00 02 1F
+# metronomeVolume    01 00 02 21
+
+
+def app_connect_handshake() -> mido.Message:
+    """Notifica al FP-30X que una app está conectada (DT1 «connection» 01 00 03 06 = 1).
+
+    El piano requiere este mensaje para aceptar DT1 de master volume, metrónomo, etc.
+    Fuente: Roland Piano App 1.5.9 — midiConnector.js sendConnection(1), extraído
+    por ingeniería inversa. La dirección 01 00 03 06 se llama 'connection' en el mapa
+    de direcciones de la app y se envía justo tras establecer la conexión MIDI.
+    """
     return roland_data_set_1((0x01, 0x00, 0x03, 0x06), (0x01,))
+
+
+def metronome_toggle() -> mido.Message:
+    """Activa/desactiva el metrónomo interno del FP-30X (primera pulsación)."""
+    return roland_data_set_1((0x01, 0x00, 0x05, 0x09), (0x00,))
+
+
+def metronome_set(*, on: bool) -> mido.Message:
+    """Enciende o apaga el metrónomo directamente sin depender del estado actual."""
+    return roland_data_set_1((0x01, 0x00, 0x03, 0x1A), (0x01 if on else 0x00,))
+
+
+def metronome_set_tempo(bpm: int) -> mido.Message:
+    """Establece el tempo del metrónomo (20–250 BPM). Codificación: [bpm // 128, bpm % 128]."""
+    if not 20 <= bpm <= 250:
+        msg = "El tempo debe estar entre 20 y 250 BPM"
+        raise ValueError(msg)
+    return roland_data_set_1((0x01, 0x00, 0x03, 0x09), (bpm // 128, bpm % 128))
+
+
+def metronome_read_status() -> mido.Message:
+    """Solicita el estado on/off del metrónomo (RQ1). Respuesta en 01 00 01 0F."""
+    return roland_data_request_1((0x01, 0x00, 0x01, 0x0F), (0x00, 0x00, 0x00, 0x01))
+
+
+def metronome_read_tempo() -> mido.Message:
+    """Solicita el tempo actual del secuenciador (RQ1). Respuesta en 01 00 01 08, 2 bytes."""
+    return roland_data_request_1((0x01, 0x00, 0x01, 0x08), (0x00, 0x00, 0x00, 0x02))
+
+
+def master_volume_set(value_0_127: int) -> mido.Message:
+    """Establece el master volume vía DT1 (01 00 02 13). Actualiza las luces del panel del FP-30X."""
+    if not 0 <= value_0_127 <= 127:
+        msg = "Master Volume debe estar entre 0 y 127"
+        raise ValueError(msg)
+    return roland_data_set_1((0x01, 0x00, 0x02, 0x13), (value_0_127,))
+
+
+def master_volume_read() -> mido.Message:
+    """Solicita el master volume del piano (RQ1). Respuesta en 01 00 02 13, 1 byte, 0–127."""
+    return roland_data_request_1((0x01, 0x00, 0x02, 0x13), (0x00, 0x00, 0x00, 0x01))
+
+
+def key_transpose_read() -> mido.Message:
+    """Solicita la transposición de teclado (RQ1). Respuesta en 01 00 01 01, 1 byte.
+
+    Decodificación: semitones = value - 64  (64 = sin transposición).
+    Rango FP-30X: -6..+5 (valores 58..69).
+    """
+    return roland_data_request_1((0x01, 0x00, 0x01, 0x01), (0x00, 0x00, 0x00, 0x01))
 
 
 def master_volume_realtime(value_0_127: int) -> mido.Message:

@@ -4,12 +4,11 @@ import sys
 import time
 
 import mido
-from PySide6.QtCore import Qt, QTimer
+from PySide6.QtCore import Qt, QSettings, QTimer
 from PySide6.QtGui import QCloseEvent
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
-    QFormLayout,
     QGroupBox,
     QHBoxLayout,
     QLabel,
@@ -27,6 +26,7 @@ from roland_fp30x_controller.midi.bank_program_parser import BankProgramParser
 from roland_fp30x_controller.midi.client import MidiOutClient
 from roland_fp30x_controller.midi.ports import list_input_names, list_output_names
 from roland_fp30x_controller.midi.rpn_parser import RpnParser, parse_master_coarse_tuning_sysex
+from roland_fp30x_controller.midi.sysex_parser import parse_roland_dt1
 from roland_fp30x_controller.midi.tone_catalog import TONE_PRESETS, Tone
 from roland_fp30x_controller.ui.i18n import Lang, tr
 from roland_fp30x_controller.ui.midi_in_worker import MidiInWorker
@@ -34,36 +34,22 @@ from roland_fp30x_controller.ui.midi_in_worker import MidiInWorker
 # Valores iniciales / «Restablecer». Parte MIDI fija en canal 4 (FP-30X + SMF Internal, Roland).
 DEFAULT_PRESET_INDEX = 0
 MIDI_PART_CHANNEL = 4
-# Mezcla: valores iniciales del manual FP-30X (receive).
-DEFAULT_VOLUME = 100
-DEFAULT_EXPRESSION = 127
-DEFAULT_PAN = 64
-DEFAULT_MODULATION = 0
-DEFAULT_REVERB = 40
-DEFAULT_CHORUS = 0
 DEFAULT_MASTER_VOLUME = 127
 DEFAULT_TRANSPOSE = 0
+DEFAULT_TEMPO = 120
+TEMPO_MIN = 20
+TEMPO_MAX = 250
 
-# Retardo tras el último movimiento del slider antes de enviar CC (teclado y ratón).
-MIX_CC_DEBOUNCE_MS = 55
+# Retardo tras el último movimiento del slider antes de enviar (teclado y ratón).
 MASTER_VOL_DEBOUNCE_MS = 55
+TEMPO_DEBOUNCE_MS = 120
 # Tras enviar banco/programa desde la app, ignorar eco del piano (segundos).
 PIANO_PATCH_IGNORE_S = 0.55
+# Tras enviar DT1 master volume, ignorar la respuesta DT1 del piano (evita que el eco
+# de la confirmación sobreescriba el slider con el valor anterior del piano).
+MASTER_VOL_IGNORE_DT1_S = 1.5
 PORT_WATCHDOG_MS = 1000
 
-
-def _cc_slider(
-    label: str, default: int, *, tracking: bool = False
-) -> tuple[QLabel, QSlider, QLabel]:
-    name = QLabel(label)
-    slider = QSlider(Qt.Orientation.Horizontal)
-    slider.setRange(0, 127)
-    slider.setValue(default)
-    slider.setTracking(tracking)
-    val = QLabel(str(default))
-    val.setMinimumWidth(28)
-    slider.valueChanged.connect(lambda v: val.setText(str(v)))
-    return name, slider, val
 
 
 class MainWindow(QMainWindow):
@@ -81,14 +67,22 @@ class MainWindow(QMainWindow):
         self._bank_parser = BankProgramParser((1, MIDI_PART_CHANNEL))
         self._rpn_parser = RpnParser((1, MIDI_PART_CHANNEL))
         self._ignore_piano_patch_until = 0.0
+        self._master_vol_sent_at = 0.0
+        self._settings = QSettings("RolandFP30xController", "RolandFP30xController")
         self._transpose_known = False
+        self._metronome_on: bool | None = None
         self._tone_combo_populating = False
         self._syncing_tone_widgets = False
-        self._suppress_mix_slider_midi = False
-        self._cc_debounce_timers: dict[int, QTimer] = {}
+        self._suppress_slider_midi = False
         self._master_vol_debounce_timer = QTimer(self)
         self._master_vol_debounce_timer.setSingleShot(True)
         self._master_vol_debounce_timer.timeout.connect(lambda: self._send_master_volume())
+        self._state_request_timer = QTimer(self)
+        self._state_request_timer.setSingleShot(True)
+        self._state_request_timer.timeout.connect(self._request_piano_state)
+        self._tempo_debounce_timer = QTimer(self)
+        self._tempo_debounce_timer.setSingleShot(True)
+        self._tempo_debounce_timer.timeout.connect(self._flush_tempo)
         self._port_watchdog_timer = QTimer(self)
         self._port_watchdog_timer.setInterval(PORT_WATCHDOG_MS)
         self._port_watchdog_timer.timeout.connect(self._check_connected_ports)
@@ -113,7 +107,6 @@ class MainWindow(QMainWindow):
         lower_layout = QVBoxLayout(self._lower_panels)
         lower_layout.setContentsMargins(0, 0, 0, 0)
         lower_layout.addWidget(self._build_main_panel())
-        lower_layout.addWidget(self._build_mix_group())
         lower_layout.addWidget(self._build_sustain())
         self._lower_panels.setEnabled(False)
         layout.addWidget(self._lower_panels)
@@ -174,17 +167,10 @@ class MainWindow(QMainWindow):
         self._label_master_vol.setText(self._tr("label_master_volume"))
         self._label_transpose.setText(self._tr("label_transpose"))
         self._label_instrument.setText(self._tr("label_instrument"))
-        self._test_metronome_btn.setText(self._tr("btn_test_metronome"))
+        self._update_metronome_btn()
+        self._label_tempo.setText(self._tr("label_tempo"))
         self._transpose_sld.setToolTip(self._tr("tooltip_transpose"))
         self._master_sld.setToolTip(self._tr("tooltip_master_volume"))
-        self._group_mix.setTitle(self._tr("group_mix"))
-        self._vol_lbl.setText(self._tr("mix_volume"))
-        self._expr_lbl.setText(self._tr("mix_expression"))
-        self._pan_lbl.setText(self._tr("mix_pan"))
-        self._mod_lbl.setText(self._tr("mix_modulation"))
-        self._rev_lbl.setText(self._tr("mix_reverb"))
-        self._cho_lbl.setText(self._tr("mix_chorus"))
-        self._rev_sld.setToolTip(self._tr("tooltip_reverb"))
         self._group_pedal.setTitle(self._tr("group_pedal"))
         self._sustain.setText(self._tr("pedal_sustain"))
         self._reset_btn.setText(self._tr("btn_reset_defaults"))
@@ -269,9 +255,11 @@ class MainWindow(QMainWindow):
         self._label_transpose = QLabel()
         self._transpose_sld = QSlider(Qt.Orientation.Horizontal)
         self._transpose_sld.setRange(-24, 24)
-        self._transpose_sld.setValue(DEFAULT_TRANSPOSE)
+        saved_transpose = int(self._settings.value("transpose/value", DEFAULT_TRANSPOSE))
+        self._transpose_sld.setValue(saved_transpose)
+        self._transpose_known = True
         self._transpose_sld.setTracking(True)
-        self._transpose_lbl = QLabel(f"{DEFAULT_TRANSPOSE:+d}")
+        self._transpose_lbl = QLabel(f"{saved_transpose:+d}")
         self._transpose_lbl.setMinimumWidth(36)
         self._transpose_lbl.setAlignment(
             Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
@@ -301,58 +289,30 @@ class MainWindow(QMainWindow):
         v.addLayout(instrument_row)
 
         test_row = QHBoxLayout()
-        self._test_metronome_btn = QPushButton()
-        self._test_metronome_btn.clicked.connect(self._send_metronome_probe)
-        test_row.addWidget(self._test_metronome_btn)
+        self._metronome_btn = QPushButton()
+        self._metronome_btn.clicked.connect(self._send_metronome_probe)
+        test_row.addWidget(self._metronome_btn)
         test_row.addStretch(1)
         v.addLayout(test_row)
+
+        tempo_row = QHBoxLayout()
+        self._label_tempo = QLabel()
+        self._tempo_sld = QSlider(Qt.Orientation.Horizontal)
+        self._tempo_sld.setRange(TEMPO_MIN, TEMPO_MAX)
+        self._tempo_sld.setValue(DEFAULT_TEMPO)
+        self._tempo_sld.setTracking(True)
+        self._tempo_val = QLabel(str(DEFAULT_TEMPO))
+        self._tempo_val.setMinimumWidth(36)
+        self._tempo_val.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        self._tempo_sld.valueChanged.connect(lambda v: self._tempo_val.setText(str(v)))
+        self._tempo_sld.valueChanged.connect(self._on_tempo_changed)
+        self._tempo_sld.sliderReleased.connect(self._flush_tempo)
+        tempo_row.addWidget(self._label_tempo)
+        tempo_row.addWidget(self._tempo_sld, stretch=1)
+        tempo_row.addWidget(self._tempo_val)
+        v.addLayout(tempo_row)
+
         return self._group_main
-
-    def _build_mix_group(self) -> QWidget:
-        self._group_mix = QGroupBox()
-        g = QFormLayout(self._group_mix)
-        self._vol_lbl, self._vol_sld, self._vol_val = _cc_slider(
-            self._tr("mix_volume"), DEFAULT_VOLUME, tracking=True
-        )
-        self._expr_lbl, self._expr_sld, self._expr_val = _cc_slider(
-            self._tr("mix_expression"), DEFAULT_EXPRESSION, tracking=True
-        )
-        self._pan_lbl, self._pan_sld, self._pan_val = _cc_slider(
-            self._tr("mix_pan"), DEFAULT_PAN, tracking=True
-        )
-        self._mod_lbl, self._mod_sld, self._mod_val = _cc_slider(
-            self._tr("mix_modulation"), DEFAULT_MODULATION, tracking=True
-        )
-        self._rev_lbl, self._rev_sld, self._rev_val = _cc_slider(
-            self._tr("mix_reverb"), DEFAULT_REVERB, tracking=True
-        )
-        self._cho_lbl, self._cho_sld, self._cho_val = _cc_slider(
-            self._tr("mix_chorus"), DEFAULT_CHORUS, tracking=True
-        )
-
-        for lbl, sld, val in (
-            (self._vol_lbl, self._vol_sld, self._vol_val),
-            (self._expr_lbl, self._expr_sld, self._expr_val),
-            (self._pan_lbl, self._pan_sld, self._pan_val),
-            (self._mod_lbl, self._mod_sld, self._mod_val),
-            (self._rev_lbl, self._rev_sld, self._rev_val),
-            (self._cho_lbl, self._cho_sld, self._cho_val),
-        ):
-            row = QHBoxLayout()
-            row.addWidget(lbl)
-            row.addWidget(sld, stretch=1)
-            row.addWidget(val)
-            w = QWidget()
-            w.setLayout(row)
-            g.addRow(w)
-
-        self._wire_mix_cc_slider(self._vol_sld, 7)
-        self._wire_mix_cc_slider(self._expr_sld, 11)
-        self._wire_mix_cc_slider(self._pan_sld, 10)
-        self._wire_mix_cc_slider(self._mod_sld, 1)
-        self._wire_mix_cc_slider(self._rev_sld, 91)
-        self._wire_mix_cc_slider(self._cho_sld, 93)
-        return self._group_mix
 
     def _build_sustain(self) -> QWidget:
         self._group_pedal = QGroupBox()
@@ -365,7 +325,7 @@ class MainWindow(QMainWindow):
 
     def closeEvent(self, event: QCloseEvent) -> None:
         self._port_watchdog_timer.stop()
-        self._cancel_mix_and_master_debounce()
+        self._cancel_debounce_timers()
         self._stop_midi_in_worker()
         self._midi.close()
         super().closeEvent(event)
@@ -398,6 +358,8 @@ class MainWindow(QMainWindow):
         self._transpose_sld.setValue(value)
         self._transpose_sld.blockSignals(False)
         self._sync_transpose_label(value if known else None)
+        if known:
+            self._settings.setValue("transpose/value", value)
         if emit_status:
             if known:
                 self._set_status(self._tr("status_transpose_from_piano", value=value))
@@ -405,11 +367,14 @@ class MainWindow(QMainWindow):
                 self._set_status(self._tr("status_transpose_unknown"))
 
     def _disconnect_device(self, *, status_key: str, name: str | None = None) -> None:
-        self._cancel_mix_and_master_debounce()
+        self._state_request_timer.stop()
+        self._cancel_debounce_timers()
         self._stop_midi_in_worker()
         self._midi.close()
         self._last_output_port = None
         self._last_input_port = None
+        self._metronome_on = None
+        self._update_metronome_btn()
         self._update_connect_button_text()
         self._lower_panels.setEnabled(False)
         if name is None:
@@ -460,6 +425,10 @@ class MainWindow(QMainWindow):
         if self._verbose:
             self._print_midi_trace("IN", msg)
         if time.monotonic() < self._ignore_piano_patch_until:
+            return
+        dt1 = parse_roland_dt1(msg)
+        if dt1 is not None:
+            self._handle_dt1(*dt1)
             return
         transpose_sysex = parse_master_coarse_tuning_sysex(msg)
         if transpose_sysex is not None:
@@ -517,9 +486,17 @@ class MainWindow(QMainWindow):
         self._last_output_port = name
         self._last_input_port = None
         self._transpose_known = False
+        self._metronome_on = None
         self._sync_transpose_label(None)
+        self._update_metronome_btn()
         self._update_connect_button_text()
         self._lower_panels.setEnabled(True)
+        # Handshake: notifica al FP-30X que una app está conectada.
+        # Sin este mensaje el piano ignora DT1 de master volume y metrónomo.
+        try:
+            self._midi.send(midix.app_connect_handshake())
+        except (OSError, RuntimeError):
+            pass
         input_names = list_input_names()
         in_name = name if name in input_names else ""
         if in_name:
@@ -545,15 +522,20 @@ class MainWindow(QMainWindow):
                     inn=self._last_input_port,
                 )
             )
+            # Leer estado del piano 200 ms después de que el worker esté listo
+            self._state_request_timer.start(200)
         else:
             self._set_status(self._tr("status_connected", name=name))
+        # Re-enviar el transpose guardado si no es 0
+        if self._transpose_sld.value() != 0:
+            self._send_transpose(update_status=False)
 
     def _set_status(self, text: str) -> None:
         self._status.setText(text)
 
     def _reset_defaults(self) -> None:
-        self._cancel_mix_and_master_debounce()
-        self._suppress_mix_slider_midi = True
+        self._cancel_debounce_timers()
+        self._suppress_slider_midi = True
         try:
             self._syncing_tone_widgets = True
             try:
@@ -563,21 +545,15 @@ class MainWindow(QMainWindow):
             finally:
                 self._syncing_tone_widgets = False
 
-            self._vol_sld.setValue(DEFAULT_VOLUME)
-            self._expr_sld.setValue(DEFAULT_EXPRESSION)
-            self._pan_sld.setValue(DEFAULT_PAN)
-            self._mod_sld.setValue(DEFAULT_MODULATION)
-            self._rev_sld.setValue(DEFAULT_REVERB)
-            self._cho_sld.setValue(DEFAULT_CHORUS)
-
             self._sustain.blockSignals(True)
             self._sustain.setChecked(False)
             self._sustain.blockSignals(False)
 
             self._master_sld.setValue(DEFAULT_MASTER_VOLUME)
             self._set_transpose_ui(DEFAULT_TRANSPOSE, known=True)
+            self._set_tempo_ui(DEFAULT_TEMPO)
         finally:
-            self._suppress_mix_slider_midi = False
+            self._suppress_slider_midi = False
 
         if not self._midi.is_open:
             self._set_status(self._tr("status_defaults_offline"))
@@ -586,69 +562,21 @@ class MainWindow(QMainWindow):
         self._reapply_full_part_to_device()
         self._set_status(self._tr("status_defaults_sent"))
 
-    def _cancel_mix_and_master_debounce(self) -> None:
-        for t in self._cc_debounce_timers.values():
-            t.stop()
+    def _cancel_debounce_timers(self) -> None:
         self._master_vol_debounce_timer.stop()
-
-    def _schedule_mix_cc(self, control: int, slider: QSlider) -> None:
-        if self._suppress_mix_slider_midi:
-            return
-        timer = self._cc_debounce_timers.get(control)
-        if timer is None:
-            timer = QTimer(self)
-            timer.setSingleShot(True)
-
-            def _flush() -> None:
-                self._flush_debounced_mix_cc(control, slider)
-
-            timer.timeout.connect(_flush)
-            self._cc_debounce_timers[control] = timer
-        timer.stop()
-        timer.start(MIX_CC_DEBOUNCE_MS)
-
-    def _flush_debounced_mix_cc(self, control: int, slider: QSlider) -> None:
-        if self._suppress_mix_slider_midi:
-            return
-        self._send_cc(control, slider.value())
-
-    def _flush_mix_cc_immediate(self, control: int, slider: QSlider) -> None:
-        if self._suppress_mix_slider_midi:
-            return
-        timer = self._cc_debounce_timers.get(control)
-        if timer is not None:
-            timer.stop()
-        self._flush_debounced_mix_cc(control, slider)
-
-    def _wire_mix_cc_slider(self, slider: QSlider, control: int) -> None:
-        slider.valueChanged.connect(
-            lambda _v, c=control, s=slider: self._schedule_mix_cc(c, s)
-        )
-        slider.sliderReleased.connect(
-            lambda c=control, s=slider: self._flush_mix_cc_immediate(c, s)
-        )
+        self._tempo_debounce_timer.stop()
 
     def _schedule_master_volume_debounced(self, _value: int = 0) -> None:
-        if self._suppress_mix_slider_midi:
+        if self._suppress_slider_midi:
             return
         self._master_vol_debounce_timer.stop()
         self._master_vol_debounce_timer.start(MASTER_VOL_DEBOUNCE_MS)
 
     def _on_master_volume_slider_released(self) -> None:
-        if self._suppress_mix_slider_midi:
+        if self._suppress_slider_midi:
             return
         self._master_vol_debounce_timer.stop()
         self._send_master_volume()
-
-    def _flush_mix_sliders_to_device(self) -> None:
-        if not self._midi.is_open:
-            return
-        self._send_cc(7, self._vol_sld.value())
-        self._send_cc(11, self._expr_sld.value())
-        self._send_cc(10, self._pan_sld.value())
-        self._send_cc(1, self._mod_sld.value())
-        self._send_cc(91, self._rev_sld.value())
-        self._send_cc(93, self._cho_sld.value())
 
     def _flush_sustain_pedal_to_device(self) -> None:
         if not self._midi.is_open:
@@ -674,7 +602,6 @@ class MainWindow(QMainWindow):
                 latch_after_program=latch_after_program,
                 update_status=update_status,
             )
-        self._flush_mix_sliders_to_device()
         self._flush_sustain_pedal_to_device()
         self._send_master_volume()
         self._send_transpose(update_status=False)
@@ -702,7 +629,7 @@ class MainWindow(QMainWindow):
             self._set_status(str(e))
 
     def _on_transpose_changed(self, value: int) -> None:
-        if self._suppress_mix_slider_midi:
+        if self._suppress_slider_midi:
             return
         self._transpose_known = True
         self._sync_transpose_label(value)
@@ -714,8 +641,10 @@ class MainWindow(QMainWindow):
     def _send_transpose(self, *, update_status: bool = True) -> None:
         if not self._midi.is_open:
             return
+        value = self._transpose_sld.value()
+        self._settings.setValue("transpose/value", value)
         try:
-            self._midi.send(midix.master_coarse_tuning_realtime(self._transpose_sld.value()))
+            self._midi.send(midix.master_coarse_tuning_realtime(value))
         except OSError:
             self._disconnect_device(
                 status_key="status_device_lost",
@@ -730,12 +659,96 @@ class MainWindow(QMainWindow):
                 self._tr("status_transpose_sent", value=self._transpose_sld.value())
             )
 
+    def _update_metronome_btn(self) -> None:
+        if self._metronome_on is True:
+            self._metronome_btn.setText(self._tr("btn_metronome_on"))
+            self._metronome_btn.setStyleSheet(
+                "QPushButton { background-color: #c0392b; color: white; font-weight: bold; }"
+                "QPushButton:hover { background-color: #e74c3c; }"
+                "QPushButton:pressed { background-color: #922b21; }"
+            )
+        else:
+            self._metronome_btn.setText(self._tr("btn_metronome_off"))
+            self._metronome_btn.setStyleSheet("")
+
+    def _request_piano_state(self) -> None:
+        """Envía RQ1 al piano para leer master volume, tempo y estado metrónomo."""
+        if not self._midi.is_open:
+            return
+        try:
+            self._midi.send(midix.master_volume_read())
+            self._midi.send(midix.metronome_read_tempo())
+            self._midi.send(midix.metronome_read_status())
+        except OSError:
+            self._disconnect_device(
+                status_key="status_device_lost",
+                name=self._last_output_port or "?",
+            )
+
+    def _handle_dt1(self, addr: tuple[int, int, int, int], data: tuple[int, ...]) -> None:
+        """Procesa respuestas DT1 del piano y actualiza la UI."""
+        # Master Volume: 01 00 02 13, 1 byte, 0-127
+        if addr == (0x01, 0x00, 0x02, 0x13) and data:
+            # Ignorar DT1 del piano si hemos enviado recientemente: el piano responde
+            # con su valor previo (ó confirmación) y sobreescribiría el slider.
+            if time.monotonic() - self._master_vol_sent_at < MASTER_VOL_IGNORE_DT1_S:
+                return
+            self._suppress_slider_midi = True
+            try:
+                self._master_sld.blockSignals(True)
+                self._master_sld.setValue(data[0])
+                self._master_sld.blockSignals(False)
+                self._master_lbl.setText(str(data[0]))
+            finally:
+                self._suppress_slider_midi = False
+            return
+        # Sequencer Tempo RO: 01 00 01 08, 2 bytes, value = b0*128 + b1
+        if addr == (0x01, 0x00, 0x01, 0x08) and len(data) >= 2:
+            bpm = data[0] * 128 + data[1]
+            if TEMPO_MIN <= bpm <= TEMPO_MAX:
+                self._set_tempo_ui(bpm)
+            return
+        # Metronome Status: 01 00 01 0F, 1 byte, 0=off 1=on
+        if addr == (0x01, 0x00, 0x01, 0x0F) and data:
+            self._metronome_on = bool(data[0])
+            self._update_metronome_btn()
+            return
+
+    def _on_tempo_changed(self, _value: int) -> None:
+        if self._suppress_slider_midi:
+            return
+        self._tempo_debounce_timer.stop()
+        self._tempo_debounce_timer.start(TEMPO_DEBOUNCE_MS)
+
+    def _flush_tempo(self) -> None:
+        if not self._midi.is_open or self._suppress_slider_midi:
+            return
+        try:
+            self._midi.send(midix.metronome_set_tempo(self._tempo_sld.value()))
+        except OSError:
+            self._disconnect_device(
+                status_key="status_device_lost",
+                name=self._last_output_port or "?",
+            )
+        except (ValueError, RuntimeError) as e:
+            self._set_status(str(e))
+
+    def _set_tempo_ui(self, bpm: int) -> None:
+        self._suppress_slider_midi = True
+        try:
+            self._tempo_sld.blockSignals(True)
+            self._tempo_sld.setValue(bpm)
+            self._tempo_sld.blockSignals(False)
+            self._tempo_val.setText(str(bpm))
+        finally:
+            self._suppress_slider_midi = False
+
     def _send_metronome_probe(self) -> None:
         if not self._midi.is_open:
             self._set_status(self._tr("msg_connect_before_send"))
             return
         try:
-            self._midi.send(midix.metronome_probe_on())
+            self._midi.send(midix.metronome_toggle())
         except OSError:
             self._disconnect_device(
                 status_key="status_device_lost",
@@ -745,6 +758,10 @@ class MainWindow(QMainWindow):
         except (ValueError, RuntimeError) as e:
             self._set_status(str(e))
             return
+        # Actualización optimista del estado (el piano confirmará vía DT1 si hay entrada MIDI).
+        # Si el estado era desconocido, asumimos que el metrónomo estaba apagado → pasa a encendido.
+        self._metronome_on = not self._metronome_on if self._metronome_on is not None else True
+        self._update_metronome_btn()
         self._set_status(self._tr("status_metronome_probe_sent"))
 
     def _tone_from_combo(self) -> Tone | None:
@@ -769,6 +786,7 @@ class MainWindow(QMainWindow):
                 tone.bank_lsb,
                 tone.program_doc,
                 tone_name=tone.name,
+                latch_after_program=False,
                 update_status=True,
             )
         else:
@@ -839,8 +857,11 @@ class MainWindow(QMainWindow):
     def _send_master_volume(self) -> None:
         if not self._midi.is_open:
             return
+        value = self._master_sld.value()
         try:
-            self._midi.send(midix.master_volume_realtime(self._master_sld.value()))
+            self._master_vol_sent_at = time.monotonic()
+            self._midi.send(midix.master_volume_set(value))
+            self._set_status(self._tr("status_master_volume_sent", value=value))
         except OSError:
             self._disconnect_device(
                 status_key="status_device_lost",

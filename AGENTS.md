@@ -2,17 +2,20 @@
 
 ## Fuente de verdad MIDI (prioridad absoluta)
 
-Antes de asumir direcciones SysEx, mapas de parámetros o comportamiento del FP-30X, **consulta y prioriza** el documento oficial de Roland en este repositorio:
+Antes de asumir direcciones SysEx, mapas de parámetros o comportamiento del FP-30X:
 
-- `docs/FP-30X_MIDI_Imple_eng01_W.pdf` — *FP-30X MIDI Implementation*
+1. **Consulta primero** `docs/midi_reference.md` — referencia consolidada con el mapa
+   completo de direcciones SysEx (extraídas de Roland Piano App 1.5.9 por ingeniería inversa)
+   y los mensajes estándar ya implementados. Es el punto de partida más rápido.
 
-Ese PDF debe tratarse como la **primera fuente de información** para:
+2. **Si necesitas más detalle**, usa el PDF oficial:
+   `docs/FP-30X_MIDI_Imple_eng01_W.pdf` — *FP-30X MIDI Implementation*
 
+El PDF es la **fuente de verdad** para:
 - Formato de mensajes (SysEx, RPN/NRPN, Control Change, etc.)
 - Modelos de datos y validación de bytes
-- Cualquier implementación de envío/recepción MIDI hacia el instrumento
 
-Si hay conflicto entre el PDF, comentarios en el código, foros o recuerdo del modelo, **gana el PDF** salvo que se demuestre un error tipográfico evidente en el manual.
+Si hay conflicto entre `midi_reference.md`, comentarios en el código, foros o recuerdo del modelo, **gana el PDF** salvo error tipográfico evidente.
 
 ## Stack del proyecto
 

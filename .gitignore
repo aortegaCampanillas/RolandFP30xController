@@ -30,6 +30,9 @@ ENV/
 .vscode/
 .DS_Store
 
+# Roland app reverse engineering artifacts
+docs/roland_piano_app/
+
 # Qt / tooling
 *.qm
 .ruff_cache/

@@ -1,0 +1,31 @@
+# Excluir entornos virtuales y artefactos de build
+.venv/
+venv/
+ENV/
+
+# Bytecode Python
+__pycache__/
+*.py[cod]
+*.pyc
+
+# Metadatos de paquete
+*.egg-info/
+*.egg
+
+# Cachés de herramientas
+.ruff_cache/
+.mypy_cache/
+.pytest_cache/
+htmlcov/
+.coverage
+
+# Artefactos de build
+build/
+dist/
+
+# Sistema / IDE
+.DS_Store
+.git/
+
+# Documentación binaria (se referencia por nombre, no por contenido)
+docs/*.pdf
