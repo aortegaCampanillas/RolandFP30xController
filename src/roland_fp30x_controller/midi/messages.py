@@ -491,45 +491,40 @@ def metronome_pattern_read() -> mido.Message:
 
 
 # Master tuning FP-30X: rango de referencia A4 según panel (~415.3 Hz … 466.2 Hz).
+# En el FP-30X, el valor SysEx útil observado para 01 00 02 18 es 0..511 (2 bytes 7-bit),
+# con interpolación lineal en Hz dentro de ese rango.
 MASTER_TUNING_REF_HZ = 440.0
 MASTER_TUNING_MIN_HZ = 415.3
 MASTER_TUNING_MAX_HZ = 466.2
+MASTER_TUNING_MIN_RAW = 9
+MASTER_TUNING_MAX_RAW = 518
 MASTER_TUNING_MIN_CENTS = 1200.0 * math.log2(MASTER_TUNING_MIN_HZ / MASTER_TUNING_REF_HZ)
 MASTER_TUNING_MAX_CENTS = 1200.0 * math.log2(MASTER_TUNING_MAX_HZ / MASTER_TUNING_REF_HZ)
-# Slider en décimas de cent (entero) para paso fino en la UI.
-MASTER_TUNING_SLIDER_MIN = math.ceil(MASTER_TUNING_MIN_CENTS * 10)
-MASTER_TUNING_SLIDER_MAX = math.ceil(MASTER_TUNING_MAX_CENTS * 10)
-
-
 def master_tuning_raw_from_hz(hz: float) -> int:
-    """Convierte Hz del panel (415.3…466.2) al valor 14-bit del SysEx (0…16383).
+    """Convierte Hz del panel (415.3…466.2) al valor SysEx observado por Roland.
 
-    El FP-30X interpola en escala logarítmica entre los extremos del panel (comportamiento
-    observado frente a un mapeo lineal en cents alrededor de 8192, que desincronizaba
-    envío, eco DT1 y la etiqueta en Hz).
+    La app oficial Roland Piano App usa `raw = hz * 10 - 4144`, con rango útil 9…518.
     """
     h = max(MASTER_TUNING_MIN_HZ, min(MASTER_TUNING_MAX_HZ, float(hz)))
-    ratio_top = math.log2(h / MASTER_TUNING_MIN_HZ)
-    ratio_full = math.log2(MASTER_TUNING_MAX_HZ / MASTER_TUNING_MIN_HZ)
-    t = ratio_top / ratio_full
-    return int(round(t * 16383))
+    return max(MASTER_TUNING_MIN_RAW, min(MASTER_TUNING_MAX_RAW, int(round((h * 10) - 4144))))
 
 
 def master_tuning_hz_from_raw(raw: int) -> float:
-    """Decodifica el valor 14-bit entrante a Hz (misma escala log que `master_tuning_raw_from_hz`)."""
-    r = max(0, min(16383, int(raw)))
-    if r <= 0:
-        return MASTER_TUNING_MIN_HZ
-    if r >= 16383:
-        return MASTER_TUNING_MAX_HZ
-    t = r / 16383
-    return float(MASTER_TUNING_MIN_HZ * ((MASTER_TUNING_MAX_HZ / MASTER_TUNING_MIN_HZ) ** t))
+    """Decodifica el valor entrante a Hz con la misma fórmula que Roland Piano App."""
+    r = max(MASTER_TUNING_MIN_RAW, min(MASTER_TUNING_MAX_RAW, int(raw)))
+    return float((4144 + r) / 10)
 
 
 def master_tuning_cents_from_raw(raw: int) -> float:
-    """Cents relativos a La 440 a partir del raw 14-bit (coherente con Hz geométrico)."""
+    """Cents relativos a La 440 a partir del raw leído."""
     hz = master_tuning_hz_from_raw(raw)
     return 1200.0 * math.log2(hz / MASTER_TUNING_REF_HZ)
+
+
+def master_tuning_set_raw(raw: int) -> mido.Message:
+    """Establece el master tuning a partir del valor raw útil 9..518."""
+    r = max(MASTER_TUNING_MIN_RAW, min(MASTER_TUNING_MAX_RAW, int(raw)))
+    return roland_data_set_1((0x01, 0x00, 0x02, 0x18), (r // 128, r % 128))
 
 
 def master_tuning_set(cents_offset: float) -> mido.Message:
@@ -537,8 +532,8 @@ def master_tuning_set(cents_offset: float) -> mido.Message:
 
     Rango útil ~415.3 Hz … 466.2 Hz respecto a La4=440 Hz (cents fuera se recortan).
 
-    El raw 0…16383 sigue la escala log en Hz entre ``MASTER_TUNING_MIN_HZ`` y
-    ``MASTER_TUNING_MAX_HZ`` (2 bytes 7-bit, MSB primero).
+    Roland Piano App usa el mapeo `raw = hz * 10 - 4144` con raw útil 9…518
+    (2 bytes 7-bit, MSB primero).
     """
     c = max(
         MASTER_TUNING_MIN_CENTS,
@@ -547,7 +542,7 @@ def master_tuning_set(cents_offset: float) -> mido.Message:
     hz = MASTER_TUNING_REF_HZ * (2 ** (c / 1200))
     hz = max(MASTER_TUNING_MIN_HZ, min(MASTER_TUNING_MAX_HZ, hz))
     raw = master_tuning_raw_from_hz(hz)
-    return roland_data_set_1((0x01, 0x00, 0x02, 0x18), (raw // 128, raw % 128))
+    return master_tuning_set_raw(raw)
 
 
 def master_tuning_read() -> mido.Message:

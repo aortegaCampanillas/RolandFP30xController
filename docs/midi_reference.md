@@ -74,7 +74,7 @@ requieren codificación multi-byte. La columna **Dir.** indica sentido: R=leer, 
 | `masterVolume`        | `01 00 02 13`   | 1     | R/W  | 0–100 en FP-30X (panel). **Usar este para controlar el volumen** — actualiza las luces del panel. El Universal Realtime Master Volume (§4.1) NO mueve las luces. |
 | `masterVolumeLimit`   | `01 00 02 14`   | 1     | R/W  | |
 | `allSongPlayMode`     | `01 00 02 15`   | 1     | R/W  | |
-| `masterTuning`        | `01 00 02 18`   | 2     | R/W  | Afinación maestra: raw 0…16383 ↔ ~415.3–466.2 Hz en escala **log** (ver código; La4≈440 Hz) |
+| `masterTuning`        | `01 00 02 18`   | 2     | R/W  | Afinación maestra: Roland Piano App usa `Hz = (4144 + raw) / 10`, con raw útil `9…518` ↔ `415.3…466.2 Hz` (2 bytes 7-bit; La4=440.0 Hz corresponde a raw `256`) |
 | `ambience`            | `01 00 02 1A`   | 1     | R/W  | Nivel de ambiente 0–… |
 | `headphones3DAmbience` | `01 00 02 1B`  | 1     | R/W  | |
 | `brilliance`          | `01 00 02 1C`   | 1     | R/W  | Brillo del sonido |

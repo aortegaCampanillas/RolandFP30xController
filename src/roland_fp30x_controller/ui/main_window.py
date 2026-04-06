@@ -76,6 +76,7 @@ TONE_CATEGORY_I18N_KEYS: dict[str, str] = {
 DEFAULT_PRESET_INDEX = 0
 MIDI_PART_CHANNEL = 4
 DEFAULT_MASTER_VOLUME = midix.MASTER_VOLUME_DT1_MAX
+DEFAULT_MASTER_TUNING_RAW = midix.master_tuning_raw_from_hz(midix.MASTER_TUNING_REF_HZ)
 DEFAULT_TRANSPOSE = 0
 DEFAULT_TEMPO = 120
 DEFAULT_BRILLIANCE = 0
@@ -1160,10 +1161,8 @@ class MainWindow(QMainWindow):
         v.addLayout(header)
 
         self._master_tuning_sld = QSlider(Qt.Orientation.Horizontal)
-        self._master_tuning_sld.setRange(
-            midix.MASTER_TUNING_SLIDER_MIN, midix.MASTER_TUNING_SLIDER_MAX
-        )
-        self._master_tuning_sld.setValue(0)
+        self._master_tuning_sld.setRange(midix.MASTER_TUNING_MIN_RAW, midix.MASTER_TUNING_MAX_RAW)
+        self._master_tuning_sld.setValue(DEFAULT_MASTER_TUNING_RAW)
         self._master_tuning_sld.setTracking(True)
         self._master_tuning_sld.valueChanged.connect(self._on_master_tuning_changed)
         self._master_tuning_sld.sliderReleased.connect(self._send_master_tuning)
@@ -2263,6 +2262,11 @@ class MainWindow(QMainWindow):
             self._set_transpose_ui(DEFAULT_TRANSPOSE, known=True)
             self._set_tempo_ui(DEFAULT_TEMPO)
 
+            self._master_tuning_sld.blockSignals(True)
+            self._master_tuning_sld.setValue(DEFAULT_MASTER_TUNING_RAW)
+            self._master_tuning_sld.blockSignals(False)
+            self._master_tuning_hz_lbl.setText(f"{midix.MASTER_TUNING_REF_HZ:.1f} Hz")
+
             self._brilliance_sld.blockSignals(True)
             self._brilliance_sld.setValue(DEFAULT_BRILLIANCE)
             self._brilliance_sld.blockSignals(False)
@@ -2353,6 +2357,7 @@ class MainWindow(QMainWindow):
             self._set_status(self._tr("status_defaults_offline"))
             return
         self._send_master_volume()
+        self._send_master_tuning()
         self._send_transpose(update_status=False)
         self._send_brilliance()
         self._send_ambience()
@@ -2558,24 +2563,16 @@ class MainWindow(QMainWindow):
             self._key_touch_combo.setCurrentIndex(idx)
             self._key_touch_combo.blockSignals(False)
             return
-        # Master Tuning: 01 00 02 18 — 2 bytes 7-bit; Hz 415.3…466.2 vía escala log (ver messages).
+        # Master Tuning: 01 00 02 18 — 2 bytes 7-bit; raw útil 9..518 y Hz = (4144 + raw) / 10.
         if addr == (0x01, 0x00, 0x02, 0x18) and len(data) >= 2:
             raw = data[0] * 128 + data[1]
             hz = midix.master_tuning_hz_from_raw(raw)
-            cents = midix.master_tuning_cents_from_raw(raw)
-            cents = max(
-                midix.MASTER_TUNING_MIN_CENTS,
-                min(midix.MASTER_TUNING_MAX_CENTS, cents),
-            )
-            tenths = int(round(cents * 10))
-            tenths = max(
-                midix.MASTER_TUNING_SLIDER_MIN,
-                min(midix.MASTER_TUNING_SLIDER_MAX, tenths),
-            )
             self._suppress_slider_midi = True
             try:
                 self._master_tuning_sld.blockSignals(True)
-                self._master_tuning_sld.setValue(tenths)
+                self._master_tuning_sld.setValue(
+                    max(midix.MASTER_TUNING_MIN_RAW, min(midix.MASTER_TUNING_MAX_RAW, raw))
+                )
                 self._master_tuning_sld.blockSignals(False)
                 self._master_tuning_hz_lbl.setText(f"{hz:.1f} Hz")
             finally:
@@ -2785,26 +2782,29 @@ class MainWindow(QMainWindow):
         except (ValueError, RuntimeError) as e:
             self._set_status(str(e))
 
-    def _on_master_tuning_changed(self, tenths: int) -> None:
-        c = max(
-            midix.MASTER_TUNING_MIN_CENTS,
-            min(midix.MASTER_TUNING_MAX_CENTS, tenths / 10.0),
-        )
-        hz_tgt = midix.MASTER_TUNING_REF_HZ * (2 ** (c / 1200))
-        hz_tgt = max(
-            midix.MASTER_TUNING_MIN_HZ,
-            min(midix.MASTER_TUNING_MAX_HZ, hz_tgt),
-        )
-        raw = midix.master_tuning_raw_from_hz(hz_tgt)
+    def _on_master_tuning_changed(self, raw: int) -> None:
         hz = midix.master_tuning_hz_from_raw(raw)
         self._master_tuning_hz_lbl.setText(f"{hz:.1f} Hz")
 
     def _send_master_tuning(self) -> None:
         if not self._midi.is_open:
             return
-        cents = self._master_tuning_sld.value() / 10.0
+        raw = self._master_tuning_sld.value()
+        hz = midix.master_tuning_hz_from_raw(raw)
         try:
-            self._midi_user_send(midix.master_tuning_set(cents))
+            if self._verbose:
+                print(
+                    f"MIDI [MASTER_TUNING] send raw={raw} hz={hz:.1f}",
+                    file=sys.stderr,
+                    flush=True,
+                )
+            if self._last_input_port:
+                self._midi_user_send_all(
+                    (midix.master_tuning_set_raw(raw), midix.master_tuning_read()),
+                    gap_s=0.05,
+                )
+            else:
+                self._midi_user_send(midix.master_tuning_set_raw(raw))
         except OSError:
             self._disconnect_device(
                 status_key="status_device_lost", name=self._last_output_port or "?"

@@ -109,20 +109,36 @@ def test_master_tuning_set_center_sysex() -> None:
         0x00,
         0x02,
         0x18,
-        0x3F,
-        0x7B,
-        0x2B,
+        0x02,
+        0x00,
+        0x63,
         0xF7,
     ]
 
 
-def test_master_tuning_geometric_endpoints() -> None:
-    assert midix.master_tuning_hz_from_raw(0) == midix.MASTER_TUNING_MIN_HZ
-    assert midix.master_tuning_hz_from_raw(16383) == midix.MASTER_TUNING_MAX_HZ
-    assert midix.master_tuning_raw_from_hz(midix.MASTER_TUNING_MIN_HZ) == 0
-    assert midix.master_tuning_raw_from_hz(midix.MASTER_TUNING_MAX_HZ) == 16383
+def test_master_tuning_set_raw_endpoints() -> None:
+    m_lo = midix.master_tuning_set_raw(midix.MASTER_TUNING_MIN_RAW)
+    m_hi = midix.master_tuning_set_raw(midix.MASTER_TUNING_MAX_RAW)
+    assert list(m_lo.bytes())[12:14] == [0x00, 0x09]
+    assert list(m_hi.bytes())[12:14] == [0x04, 0x06]
+
+
+def test_master_tuning_endpoints() -> None:
+    assert midix.master_tuning_hz_from_raw(midix.MASTER_TUNING_MIN_RAW) == midix.MASTER_TUNING_MIN_HZ
+    assert midix.master_tuning_hz_from_raw(midix.MASTER_TUNING_MAX_RAW) == midix.MASTER_TUNING_MAX_HZ
+    assert midix.master_tuning_raw_from_hz(midix.MASTER_TUNING_MIN_HZ) == midix.MASTER_TUNING_MIN_RAW
+    assert midix.master_tuning_raw_from_hz(midix.MASTER_TUNING_MAX_HZ) == midix.MASTER_TUNING_MAX_RAW
     hz440 = midix.master_tuning_hz_from_raw(midix.master_tuning_raw_from_hz(440.0))
     assert abs(hz440 - 440.0) < 0.02
+
+
+def test_master_tuning_observed_points() -> None:
+    assert midix.master_tuning_hz_from_raw(133) == 427.7
+    assert midix.master_tuning_raw_from_hz(427.7) == 133
+    assert abs(midix.master_tuning_hz_from_raw(midix.master_tuning_raw_from_hz(415.3)) - 415.3) < 0.02
+    assert abs(midix.master_tuning_hz_from_raw(midix.master_tuning_raw_from_hz(416.1)) - 416.1) < 0.02
+    assert abs(midix.master_tuning_hz_from_raw(midix.master_tuning_raw_from_hz(416.6)) - 416.6) < 0.02
+    assert abs(midix.master_tuning_hz_from_raw(midix.master_tuning_raw_from_hz(416.8)) - 416.8) < 0.02
 
 
 def test_master_tuning_set_clamps_high_to_max_raw() -> None:
