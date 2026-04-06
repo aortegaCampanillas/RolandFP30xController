@@ -74,6 +74,8 @@ requieren codificación multi-byte. La columna **Dir.** indica sentido: R=leer, 
 | `masterVolume`        | `01 00 02 13`   | 1     | R/W  | 0–100 en FP-30X (panel). **Usar este para controlar el volumen** — actualiza las luces del panel. El Universal Realtime Master Volume (§4.1) NO mueve las luces. |
 | `masterVolumeLimit`   | `01 00 02 14`   | 1     | R/W  | |
 | `allSongPlayMode`     | `01 00 02 15`   | 1     | R/W  | |
+| `splitRightOctaveShift` | `01 00 02 16` | 1     | R/W  | Encoding: octava+64 |
+| `dualTone1OctaveShift` | `01 00 02 17`  | 1     | R/W  | Encoding: octava+64 |
 | `masterTuning`        | `01 00 02 18`   | 2     | R/W  | Afinación maestra: Roland Piano App usa `Hz = (4144 + raw) / 10`, con raw útil `9…518` ↔ `415.3…466.2 Hz` (2 bytes 7-bit; La4=440.0 Hz corresponde a raw `256`) |
 | `ambience`            | `01 00 02 1A`   | 1     | R/W  | Nivel de ambiente 0–… |
 | `headphones3DAmbience` | `01 00 02 1B`  | 1     | R/W  | |
@@ -99,7 +101,7 @@ requieren codificación multi-byte. La columna **Dir.** indica sentido: R=leer, 
 | `connection`          | `01 00 03 06`   | 1     | W    | **Handshake app**: enviar `01` al conectar. Sin este mensaje el piano ignora DT1 de master volume y metrónomo. La app Roland lo llama `sendConnection(1)` y lo envía justo tras abrir el puerto MIDI. |
 | `keyTransposeWO`      | `01 00 03 07`   | 1     | W    | Transposición teclado. Encoding: `value = semitones + 64`. Rango FP-30X: −6..+5. Par write de `keyTransposeRO`. |
 | `songTransposeWO`     | `01 00 03 08`   | 1     | W    | Transposición de canción (write-only) |
-| `sequencerTempoWO`    | `01 00 03 09`   | 2     | W    | Tempo BPM: `[bpm//128, bpm%128]`, rango 20–250 |
+| `sequencerTempoWO`    | `01 00 03 09`   | 2     | W    | Tempo BPM: `[bpm//128, bpm%128]`, rango 10–500 |
 | `tempoReset`          | `01 00 03 0B`   | 1     | W    | Reset tempo al valor original |
 | `sequencerLoopStartMeasure` | `01 00 03 0C` | 2  | W    | |
 | `sequencerLoopEndMeasure`   | `01 00 03 0E` | 2  | W    | |
@@ -329,7 +331,7 @@ metronome_read_status() # RQ1 → 01 00 01 0F, 1 byte  → actualiza etiqueta ON
 
 **Decodificación de las respuestas:**
 - `masterVolume` (01 00 02 13): `data[0]` directo, 0–100 en panel FP-30X
-- `sequencerTempoRO` (01 00 01 08): `bpm = data[0] * 128 + data[1]`, rango 20–250
+- `sequencerTempoRO` (01 00 01 08): `bpm = data[0] * 128 + data[1]`, rango 10–500
 - `metronomeStatus` (01 00 01 0F): `on = bool(data[0])`
 
 El piano también emite DT1 **espontáneamente** (sin RQ1 previo) para `metronomeStatus`

@@ -106,8 +106,8 @@ _KEY_TOUCH_I18N_KEYS = (
     "key_touch_super_heavy",
 )
 
-TEMPO_MIN = 20
-TEMPO_MAX = 250
+TEMPO_MIN = 10
+TEMPO_MAX = 500
 MASTER_VOL_DEBOUNCE_MS = 55
 TEMPO_DEBOUNCE_MS = 120
 PIANO_PATCH_IGNORE_S = 0.55
@@ -2338,6 +2338,8 @@ class MainWindow(QMainWindow):
             self._metro_vol_sld.setValue(DEFAULT_METRO_VOLUME)
             self._metro_vol_sld.blockSignals(False)
             self._metro_vol_lbl.setText(str(DEFAULT_METRO_VOLUME))
+            self._metronome_on = False
+            self._update_metronome_btn()
             self._metro_tone_seg.set_index(DEFAULT_METRO_TONE)
             for p, pbtn in enumerate(self._pattern_btns):
                 pbtn.blockSignals(True)
@@ -2415,9 +2417,11 @@ class MainWindow(QMainWindow):
         self._send_master_volume()
         self._send_master_tuning()
         self._send_transpose(update_status=False)
+        self._flush_tempo()
         self._send_brilliance()
         self._send_ambience()
         self._send_key_touch()
+        self._midi_user_send(midix.metronome_set(on=False))
         self._midi_user_send(midix.metronome_volume_set(DEFAULT_METRO_VOLUME))
         self._midi_user_send(midix.metronome_tone_set(DEFAULT_METRO_TONE))
         self._midi_user_send(midix.metronome_beat_set(DEFAULT_METRO_BEAT))

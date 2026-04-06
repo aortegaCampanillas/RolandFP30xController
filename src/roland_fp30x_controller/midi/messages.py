@@ -223,9 +223,9 @@ def metronome_set(*, on: bool) -> mido.Message:
 
 
 def metronome_set_tempo(bpm: int) -> mido.Message:
-    """Establece el tempo del metrónomo (20–250 BPM). Codificación: [bpm // 128, bpm % 128]."""
-    if not 20 <= bpm <= 250:
-        msg = "El tempo debe estar entre 20 y 250 BPM"
+    """Establece el tempo del metrónomo (10–500 BPM). Codificación: [bpm // 128, bpm % 128]."""
+    if not 10 <= bpm <= 500:
+        msg = "El tempo debe estar entre 10 y 500 BPM"
         raise ValueError(msg)
     return roland_data_set_1((0x01, 0x00, 0x03, 0x09), (bpm // 128, bpm % 128))
 
