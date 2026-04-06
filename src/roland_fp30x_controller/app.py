@@ -231,12 +231,15 @@ def _set_macos_process_icon_from_png(png_bytes: bytes) -> None:
 def run(argv: list[str] | None = None) -> int:
     if argv is None:
         argv = sys.argv[1:]
-    # Compatibilidad con /verbose (estilo Windows); en Python lo habitual es --verbose o -v.
+    # Compatibilidad con /verbose y /debug (estilo Windows).
     filtered: list[str] = []
     verbose_slash = False
+    debug_slash = False
     for item in argv:
         if item == "/verbose":
             verbose_slash = True
+        elif item == "/debug":
+            debug_slash = True
         else:
             filtered.append(item)
     parser = argparse.ArgumentParser(
@@ -249,8 +252,14 @@ def run(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Escribe en stderr todo el MIDI enviado y recibido (trazas).",
     )
+    parser.add_argument(
+        "--debug",
+        action="store_true",
+        help="Activa utilidades de depuracion de la UI, incluido 'Read Piano Values'.",
+    )
     args, qt_argv = parser.parse_known_args(filtered)
     verbose = args.verbose or verbose_slash
+    debug = args.debug or debug_slash
     app = QApplication([sys.argv[0], *qt_argv])
     app.setWindowIcon(_application_icon())
     if sys.platform == "darwin":
@@ -263,6 +272,6 @@ def run(argv: list[str] | None = None) -> int:
     # Qt mezcla widgets nativos y el stylesheet: línea divisoria y “rectángulo” en vez de flecha.
     app.setStyle("Fusion")
     app.setStyleSheet(DARK_STYLE)
-    window = MainWindow(verbose=verbose)
+    window = MainWindow(verbose=verbose, debug=debug)
     window.show()
     return app.exec()

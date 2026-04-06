@@ -51,6 +51,12 @@ Optional verbose MIDI trace (stderr):
 python -m roland_fp30x_controller --verbose
 ```
 
+Optional debug UI helpers (shows the **Read Piano Values** button):
+
+```bash
+python -m roland_fp30x_controller /debug
+```
+
 ---
 
 ## Quick start

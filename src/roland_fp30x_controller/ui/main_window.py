@@ -424,6 +424,7 @@ class MainWindow(QMainWindow):
         self._suppress_slider_midi = False
         self._midi_sync_updating = False
         self._keyboard_mode = DEFAULT_KEYBOARD_MODE
+        self._piano_designer_active = False
 
         self._master_vol_debounce_timer = QTimer(self)
         self._master_vol_debounce_timer.setSingleShot(True)
@@ -745,12 +746,25 @@ class MainWindow(QMainWindow):
         self._tab_widget.setTabText(2, self._tr("tab_metronome"))
         self._tab_widget.setTabText(3, self._tr("tab_piano_designer"))
         # Piano Designer labels
+        self._pd_section_cabinet.setText(self._tr("pd_section_cabinet"))
+        self._pd_section_strings.setText(self._tr("pd_section_strings"))
+        self._pd_section_damper.setText(self._tr("pd_section_damper"))
+        self._pd_section_keyboard.setText(self._tr("pd_section_keyboard"))
+        self._pd_section_tuning.setText(self._tr("pd_section_tuning"))
         self._pd_label_lid.setText(self._tr("pd_label_lid"))
         self._pd_label_string_res.setText(self._tr("pd_label_string_resonance"))
         self._pd_label_damper_res.setText(self._tr("pd_label_damper_resonance"))
         self._pd_label_key_off.setText(self._tr("pd_label_key_off_resonance"))
         self._pd_label_temperament.setText(self._tr("pd_label_temperament"))
         self._pd_label_temp_key.setText(self._tr("pd_label_temperament_key"))
+        current_temp = self._pd_temp_combo.currentIndex()
+        self._pd_temp_combo.blockSignals(True)
+        self._pd_temp_combo.clear()
+        for key in self._TEMPERAMENT_I18N_KEYS:
+            self._pd_temp_combo.addItem(self._tr(key))
+        self._pd_temp_combo.setCurrentIndex(max(0, current_temp))
+        self._pd_temp_combo.blockSignals(False)
+        self._pd_populate_temp_key_combo()
         self._pd_save_btn.setText(self._tr("pd_btn_save"))
         if hasattr(self, "_inv_note_combo"):
             self._inv_section_title.setText(self._tr("pd_section_note_voicing"))
@@ -776,6 +790,8 @@ class MainWindow(QMainWindow):
         # Metronome
         self._label_tempo.setText(self._tr("label_bpm"))
         self._label_metro_vol.setText(self._tr("label_metro_volume"))
+        self._label_metro_tone.setText(self._tr("label_metro_tone"))
+        self._label_metro_beat.setText(self._tr("label_metro_beat"))
         if hasattr(self, "_label_metro_pattern"):
             self._label_metro_pattern.setText(self._tr("label_metro_pattern"))
             for i, btn in enumerate(self._pattern_btns):
@@ -1574,8 +1590,8 @@ class MainWindow(QMainWindow):
         v.addWidget(self._make_separator())
 
         # Tone (Click / Electronic / Japanese / English)
-        tone_lbl = QLabel(self._tr("label_metro_tone"))
-        v.addWidget(tone_lbl)
+        self._label_metro_tone = QLabel(self._tr("label_metro_tone"))
+        v.addWidget(self._label_metro_tone)
         self._metro_tone_seg = SegmentedBar(
             [
                 self._tr("metro_tone_click"),
@@ -1626,8 +1642,8 @@ class MainWindow(QMainWindow):
         v.addWidget(self._make_separator())
 
         # Beat / time signature (todos los compases del FP-30X, rejilla para no cortar)
-        beat_lbl = QLabel(self._tr("label_metro_beat"))
-        v.addWidget(beat_lbl)
+        self._label_metro_beat = QLabel(self._tr("label_metro_beat"))
+        v.addWidget(self._label_metro_beat)
         beat_widget = QWidget()
         beat_grid = QGridLayout(beat_widget)
         beat_grid.setContentsMargins(0, 0, 0, 0)
@@ -1696,7 +1712,8 @@ class MainWindow(QMainWindow):
             return lbl
 
         # ── Cabinet ──
-        v.addWidget(_section_header(self._tr("pd_section_cabinet")))
+        self._pd_section_cabinet = _section_header(self._tr("pd_section_cabinet"))
+        v.addWidget(self._pd_section_cabinet)
         v.addWidget(self._make_separator())
 
         lid_hdr = QHBoxLayout()
@@ -1718,7 +1735,8 @@ class MainWindow(QMainWindow):
         v.addSpacing(8)
 
         # ── Strings ──
-        v.addWidget(_section_header(self._tr("pd_section_strings")))
+        self._pd_section_strings = _section_header(self._tr("pd_section_strings"))
+        v.addWidget(self._pd_section_strings)
         v.addWidget(self._make_separator())
 
         str_hdr = QHBoxLayout()
@@ -1743,7 +1761,8 @@ class MainWindow(QMainWindow):
         v.addSpacing(8)
 
         # ── Damper ──
-        v.addWidget(_section_header(self._tr("pd_section_damper")))
+        self._pd_section_damper = _section_header(self._tr("pd_section_damper"))
+        v.addWidget(self._pd_section_damper)
         v.addWidget(self._make_separator())
 
         dmp_hdr = QHBoxLayout()
@@ -1768,7 +1787,8 @@ class MainWindow(QMainWindow):
         v.addSpacing(8)
 
         # ── Keyboard ──
-        v.addWidget(_section_header(self._tr("pd_section_keyboard")))
+        self._pd_section_keyboard = _section_header(self._tr("pd_section_keyboard"))
+        v.addWidget(self._pd_section_keyboard)
         v.addWidget(self._make_separator())
 
         koff_hdr = QHBoxLayout()
@@ -1793,7 +1813,8 @@ class MainWindow(QMainWindow):
         v.addSpacing(8)
 
         # ── Tuning ──
-        v.addWidget(_section_header(self._tr("pd_section_tuning")))
+        self._pd_section_tuning = _section_header(self._tr("pd_section_tuning"))
+        v.addWidget(self._pd_section_tuning)
         v.addWidget(self._make_separator())
 
         # Temperament
@@ -2037,8 +2058,21 @@ class MainWindow(QMainWindow):
             # Switch back to previous tab
             self._tab_widget.setCurrentIndex(0)
 
-    def _pd_send_lid(self, val: int) -> None:
+    def _ensure_piano_designer_active(self) -> bool:
         if not self._midi.is_open:
+            return False
+        if self._piano_designer_active:
+            return True
+        try:
+            self._midi_user_send(midix.piano_designer_enter())
+        except OSError:
+            self._disconnect_device(status_key="status_device_lost", name=self._last_output_port or "?")
+            return False
+        self._piano_designer_active = True
+        return True
+
+    def _pd_send_lid(self, val: int) -> None:
+        if not self._ensure_piano_designer_active():
             return
         try:
             self._midi_user_send(midix.piano_designer_lid_set(val))
@@ -2046,7 +2080,7 @@ class MainWindow(QMainWindow):
             self._disconnect_device(status_key="status_device_lost", name=self._last_output_port or "?")
 
     def _pd_send_string_res(self, val: int) -> None:
-        if not self._midi.is_open:
+        if not self._ensure_piano_designer_active():
             return
         try:
             self._midi_user_send(midix.piano_designer_string_resonance_set(val))
@@ -2054,7 +2088,7 @@ class MainWindow(QMainWindow):
             self._disconnect_device(status_key="status_device_lost", name=self._last_output_port or "?")
 
     def _pd_send_damper_res(self, val: int) -> None:
-        if not self._midi.is_open:
+        if not self._ensure_piano_designer_active():
             return
         try:
             self._midi_user_send(midix.piano_designer_damper_resonance_set(val))
@@ -2062,7 +2096,7 @@ class MainWindow(QMainWindow):
             self._disconnect_device(status_key="status_device_lost", name=self._last_output_port or "?")
 
     def _pd_send_key_off(self, val: int) -> None:
-        if not self._midi.is_open:
+        if not self._ensure_piano_designer_active():
             return
         try:
             self._midi_user_send(midix.piano_designer_key_off_resonance_set(val))
@@ -2070,7 +2104,7 @@ class MainWindow(QMainWindow):
             self._disconnect_device(status_key="status_device_lost", name=self._last_output_port or "?")
 
     def _pd_send_temperament(self, idx: int) -> None:
-        if not self._midi.is_open:
+        if not self._ensure_piano_designer_active():
             return
         try:
             self._midi_user_send(midix.piano_designer_temperament_set(idx))
@@ -2078,7 +2112,7 @@ class MainWindow(QMainWindow):
             self._disconnect_device(status_key="status_device_lost", name=self._last_output_port or "?")
 
     def _pd_send_temperament_key(self, idx: int) -> None:
-        if not self._midi.is_open:
+        if not self._ensure_piano_designer_active():
             return
         try:
             self._midi_user_send(midix.piano_designer_temperament_key_set(idx))
@@ -2086,7 +2120,7 @@ class MainWindow(QMainWindow):
             self._disconnect_device(status_key="status_device_lost", name=self._last_output_port or "?")
 
     def _pd_save_to_piano(self) -> None:
-        if not self._midi.is_open:
+        if not self._ensure_piano_designer_active():
             self._set_status(self._tr("msg_connect_before_send"))
             return
         try:
@@ -2161,6 +2195,7 @@ class MainWindow(QMainWindow):
         self._last_output_port = None
         self._last_input_port = None
         self._metronome_on = None
+        self._piano_designer_active = False
         self._update_metronome_btn()
         self._update_connect_button_text()
         self._sync_connection_dependent_controls()
@@ -2271,6 +2306,7 @@ class MainWindow(QMainWindow):
         self._last_input_port = None
         self._transpose_known = False
         self._metronome_on = None
+        self._piano_designer_active = False
         self._sync_transpose_label(None)
         self._update_metronome_btn()
         self._update_connect_button_text()
@@ -2440,12 +2476,13 @@ class MainWindow(QMainWindow):
         )
         self._midi_user_send(midix.dual_tone1_octave_shift_set(0))
         self._midi_user_send(midix.dual_octave_shift_set(0))
-        self._midi_user_send(midix.piano_designer_lid_set(4))
-        self._midi_user_send(midix.piano_designer_string_resonance_set(5))
-        self._midi_user_send(midix.piano_designer_damper_resonance_set(5))
-        self._midi_user_send(midix.piano_designer_key_off_resonance_set(5))
-        self._midi_user_send(midix.piano_designer_temperament_set(0))
-        self._midi_user_send(midix.piano_designer_temperament_key_set(0))
+        if self._ensure_piano_designer_active():
+            self._midi_user_send(midix.piano_designer_lid_set(4))
+            self._midi_user_send(midix.piano_designer_string_resonance_set(5))
+            self._midi_user_send(midix.piano_designer_damper_resonance_set(5))
+            self._midi_user_send(midix.piano_designer_key_off_resonance_set(5))
+            self._midi_user_send(midix.piano_designer_temperament_set(0))
+            self._midi_user_send(midix.piano_designer_temperament_key_set(0))
         self._set_status(self._tr("status_defaults_sent"))
 
     def _cancel_debounce_timers(self) -> None:

@@ -27,3 +27,7 @@ Si hay conflicto entre `midi_reference.md`, comentarios en el código, foros o r
 
 - Mantener la lógica MIDI separada de widgets Qt cuando sea razonable (facilita pruebas).
 - No eliminar ni mover `docs/FP-30X_MIDI_Imple_eng01_W.pdf` sin sustituirlo por una versión equivalente o actualizada del mismo documento.
+- Si un cambio afecta a valores leídos/escritos del piano (direcciones SysEx, mapeos, decodificación o sincronización UI↔piano), actualizar también:
+  - `_READ_PIANO_VALUE_SPECS` en `src/roland_fp30x_controller/ui/main_window.py`
+  - `_piano_value_summary()` / trazas `MIDI [VALUES]` en ese mismo archivo
+  - `docs/midi_reference.md` si aparecen direcciones nuevas o cambia su interpretación
