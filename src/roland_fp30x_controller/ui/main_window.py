@@ -90,6 +90,8 @@ DEFAULT_METRO_VOLUME = 5
 DEFAULT_METRO_TONE = 0      # Click
 DEFAULT_METRO_BEAT = 3      # 4/4 (valor SysEx del preset central)
 DEFAULT_METRO_PATTERN = 0   # Off (01 00 02 20)
+OCTAVE_SHIFT_MIN = -3
+OCTAVE_SHIFT_MAX = 3
 
 # Columnas en rejilla para compás y patrón (misma disposición que la app Roland).
 METRO_GRID_COLS = 5
@@ -1015,7 +1017,7 @@ class MainWindow(QMainWindow):
         *,
         on_change: Callable[[int], None] | None = None,
     ) -> tuple[QWidget, QLabel]:
-        """Devuelve (widget, value_label) para un control de octava -4..+4."""
+        """Devuelve (widget, value_label) para un control de octava -3..+3."""
         w = QWidget()
         h = QHBoxLayout(w)
         h.setContentsMargins(0, 0, 0, 0)
@@ -1033,7 +1035,7 @@ class MainWindow(QMainWindow):
 
         def dec() -> None:
             v = int(val_lbl.text())
-            if v > -4:
+            if v > OCTAVE_SHIFT_MIN:
                 v -= 1
                 val_lbl.setText(str(v))
                 if on_change is not None:
@@ -1041,7 +1043,7 @@ class MainWindow(QMainWindow):
 
         def inc() -> None:
             v = int(val_lbl.text())
-            if v < 4:
+            if v < OCTAVE_SHIFT_MAX:
                 v += 1
                 val_lbl.setText(str(v))
                 if on_change is not None:
@@ -2363,6 +2365,10 @@ class MainWindow(QMainWindow):
             self._dual_balance_lbl.setText(f"{db_l}:{db_r}")
             self._split_point_val = DEFAULT_SPLIT_POINT
             self._update_split_point_label()
+            self._split_right_shift_lbl.setText("0")
+            self._split_left_shift_lbl.setText("0")
+            self._dual_shift1_lbl.setText("0")
+            self._dual_shift2_lbl.setText("0")
             self._twin_mode_seg.set_index(DEFAULT_TWIN_MODE)
 
             # Piano Designer
@@ -2416,6 +2422,20 @@ class MainWindow(QMainWindow):
         self._midi_user_send(midix.metronome_tone_set(DEFAULT_METRO_TONE))
         self._midi_user_send(midix.metronome_beat_set(DEFAULT_METRO_BEAT))
         self._midi_user_send(midix.metronome_pattern_set(DEFAULT_METRO_PATTERN))
+        self._midi_user_send(midix.split_balance_set(DEFAULT_BALANCE))
+        self._midi.send_all_spaced(
+            midix.split_balance_control_changes(DEFAULT_BALANCE),
+            gap_s=midix.DEFAULT_MESSAGE_GAP_S,
+        )
+        self._midi_user_send(midix.split_right_octave_shift_set(0))
+        self._midi_user_send(midix.split_octave_shift_set(0))
+        self._midi_user_send(midix.dual_balance_set(DEFAULT_BALANCE))
+        self._midi.send_all_spaced(
+            midix.dual_balance_control_changes(DEFAULT_BALANCE),
+            gap_s=midix.DEFAULT_MESSAGE_GAP_S,
+        )
+        self._midi_user_send(midix.dual_tone1_octave_shift_set(0))
+        self._midi_user_send(midix.dual_octave_shift_set(0))
         self._midi_user_send(midix.piano_designer_lid_set(4))
         self._midi_user_send(midix.piano_designer_string_resonance_set(5))
         self._midi_user_send(midix.piano_designer_damper_resonance_set(5))
@@ -2708,11 +2728,15 @@ class MainWindow(QMainWindow):
             return
         # Split right octave shift: 01 00 02 16
         if addr == (0x01, 0x00, 0x02, 0x16) and data:
-            self._split_right_shift_lbl.setText(str(max(-4, min(4, int(data[0]) - 64))))
+            self._split_right_shift_lbl.setText(
+                str(max(OCTAVE_SHIFT_MIN, min(OCTAVE_SHIFT_MAX, int(data[0]) - 64)))
+            )
             return
         # Split left octave shift: 01 00 02 02
         if addr == (0x01, 0x00, 0x02, 0x02) and data:
-            self._split_left_shift_lbl.setText(str(max(-4, min(4, int(data[0]) - 64))))
+            self._split_left_shift_lbl.setText(
+                str(max(OCTAVE_SHIFT_MIN, min(OCTAVE_SHIFT_MAX, int(data[0]) - 64)))
+            )
             return
         # Split balance: 01 00 02 03 (byte centrado en 64; pasos de 1 con 9=centro)
         if addr == (0x01, 0x00, 0x02, 0x03) and data:
@@ -2731,11 +2755,15 @@ class MainWindow(QMainWindow):
             return
         # Dual tone 1 octave shift: 01 00 02 17
         if addr == (0x01, 0x00, 0x02, 0x17) and data:
-            self._dual_shift1_lbl.setText(str(max(-4, min(4, int(data[0]) - 64))))
+            self._dual_shift1_lbl.setText(
+                str(max(OCTAVE_SHIFT_MIN, min(OCTAVE_SHIFT_MAX, int(data[0]) - 64)))
+            )
             return
         # Dual tone 2 octave shift: 01 00 02 04
         if addr == (0x01, 0x00, 0x02, 0x04) and data:
-            self._dual_shift2_lbl.setText(str(max(-4, min(4, int(data[0]) - 64))))
+            self._dual_shift2_lbl.setText(
+                str(max(OCTAVE_SHIFT_MIN, min(OCTAVE_SHIFT_MAX, int(data[0]) - 64)))
+            )
             return
         # Dual balance: 01 00 02 05 (byte centrado en 64; panel útil ~6..11 en FP-30X)
         if addr == (0x01, 0x00, 0x02, 0x05) and data:

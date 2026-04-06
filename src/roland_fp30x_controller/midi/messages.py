@@ -434,6 +434,9 @@ def dual_balance_control_changes(value: int) -> list[mido.Message]:
 
 def split_octave_shift_set(value: int) -> mido.Message:
     """Transposición de octava en Split (01 00 02 02). Encoding: value+64."""
+    if not -3 <= value <= 3:
+        msg = "Split octave shift debe estar entre -3 y 3"
+        raise ValueError(msg)
     return roland_data_set_1((0x01, 0x00, 0x02, 0x02), (value + 64,))
 
 
@@ -443,6 +446,9 @@ def split_octave_shift_read() -> mido.Message:
 
 def dual_octave_shift_set(value: int) -> mido.Message:
     """Transposición de octava en Dual (01 00 02 04). Encoding: value+64."""
+    if not -3 <= value <= 3:
+        msg = "Dual octave shift debe estar entre -3 y 3"
+        raise ValueError(msg)
     return roland_data_set_1((0x01, 0x00, 0x02, 0x04), (value + 64,))
 
 
@@ -452,6 +458,9 @@ def dual_octave_shift_read() -> mido.Message:
 
 def split_right_octave_shift_set(value: int) -> mido.Message:
     """Transposición de octava de la mano derecha en Split (01 00 02 16). Encoding: value+64."""
+    if not -3 <= value <= 3:
+        msg = "Split right octave shift debe estar entre -3 y 3"
+        raise ValueError(msg)
     return roland_data_set_1((0x01, 0x00, 0x02, 0x16), (value + 64,))
 
 
@@ -461,6 +470,9 @@ def split_right_octave_shift_read() -> mido.Message:
 
 def dual_tone1_octave_shift_set(value: int) -> mido.Message:
     """Transposición de octava del tono 1 en Dual (01 00 02 17). Encoding: value+64."""
+    if not -3 <= value <= 3:
+        msg = "Dual tone 1 octave shift debe estar entre -3 y 3"
+        raise ValueError(msg)
     return roland_data_set_1((0x01, 0x00, 0x02, 0x17), (value + 64,))
 
 
