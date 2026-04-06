@@ -1,0 +1,123 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: write
+
+jobs:
+  # ── macOS (Intel x86_64 y Apple Silicon arm64) ───────────────────────────
+  build-macos:
+    strategy:
+      matrix:
+        include:
+          - runner: macos-13       # Intel x86_64
+            arch: intel
+          - runner: macos-latest   # Apple Silicon arm64
+            arch: arm64
+    runs-on: ${{ matrix.runner }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -e .
+          pip install pyinstaller
+
+      - name: Build .app
+        run: |
+          pyinstaller \
+            --windowed \
+            --name "PianoPilot for FP-30X" \
+            --collect-all roland_fp30x_controller \
+            --hidden-import mido.backends.rtmidi \
+            src/roland_fp30x_controller/__main__.py
+
+      - name: Ad-hoc code sign (requerido en Apple Silicon)
+        run: |
+          codesign --force --deep --sign - \
+            "dist/PianoPilot for FP-30X.app"
+
+      - name: Create DMG
+        run: |
+          brew install create-dmg
+          create-dmg \
+            --volname "PianoPilot for FP-30X" \
+            --window-pos 200 120 \
+            --window-size 600 300 \
+            --icon-size 100 \
+            --app-drop-link 425 120 \
+            "PianoPilot-for-FP30X-${{ github.ref_name }}-mac-${{ matrix.arch }}.dmg" \
+            "dist/PianoPilot for FP-30X.app"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos-${{ matrix.arch }}
+          path: "PianoPilot-for-FP30X-${{ github.ref_name }}-mac-${{ matrix.arch }}.dmg"
+
+  # ── Windows ──────────────────────────────────────────────────────────────
+  build-windows:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -e .
+          pip install pyinstaller
+
+      - name: Build .exe
+        run: |
+          pyinstaller `
+            --windowed `
+            --onefile `
+            --name "PianoPilot for FP-30X" `
+            --collect-all roland_fp30x_controller `
+            --hidden-import mido.backends.rtmidi `
+            src/roland_fp30x_controller/__main__.py
+
+      - name: Rename artifact
+        run: |
+          Move-Item `
+            "dist\PianoPilot for FP-30X.exe" `
+            "PianoPilot-for-FP30X-${{ github.ref_name }}-windows.exe"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-exe
+          path: "PianoPilot-for-FP30X-${{ github.ref_name }}-windows.exe"
+
+  # ── Crear GitHub Release ─────────────────────────────────────────────────
+  release:
+    needs: [build-macos, build-windows]
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          merge-multiple: true
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          name: "PianoPilot for FP-30X ${{ github.ref_name }}"
+          generate_release_notes: true
+          draft: false
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          files: |
+            *.dmg
+            *.exe

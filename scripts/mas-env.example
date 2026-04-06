@@ -1,0 +1,32 @@
+# Copia este archivo a: signing/local/mas.env
+# (signing/local/ está en .gitignore — no subas secretos)
+#
+# Rellena identidades exactas de:
+#   security find-identity -v -p codesigning
+#
+# Tras un rechazo de App Review, sube SIEMPRE un CFBundleVersion nuevo
+# (--build-number mayor que el anterior en App Store Connect).
+
+export MAS_APP_DIST_IDENTITY='3rd Party Mac Developer Application: Tu Nombre (TEAMID)'
+export MAS_INSTALLER_IDENTITY='3rd Party Mac Developer Installer: Tu Nombre (TEAMID)'
+export MAS_BUNDLE_ID='com.tuempresa.pianopilot'
+
+# Perfil Mac App Store (.provisionprofile). Suele estar en signing/local/profiles/ (no va a git).
+# Ruta portable al source desde mas.env:
+export MAS_PROVISIONING_PROFILE="$(cd "$(dirname "${BASH_SOURCE[0]}")/profiles" && pwd)/PianoPilot.provisionprofile"
+# Alternativa: copiado desde Xcode a ~/Library/... (nombre UUID.mobileprovision):
+# export MAS_PROVISIONING_PROFILE="${HOME}/Library/MobileDevice/Provisioning Profiles/XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX.mobileprovision"
+
+# Versión visible y build (incrementa build en cada reenvío a App Store Connect)
+export MAS_VERSION='1.0.0'
+export MAS_BUILD_NUMBER='1'
+
+# Python para PyInstaller (debe tener las dependencias + pyinstaller instalados).
+# El script usa: $PYTHON_BIN -m PyInstaller …
+# Recomendado: usa el venv creado con bootstrap_mas_build_env.sh
+# export PYTHON_BIN="/Users/tu_usuario/desarrollo/RolandFP30xController/.venv-mas/bin/python"
+# Alternativa: Python.org 3.11 directo
+# export PYTHON_BIN="/Library/Frameworks/Python.framework/Versions/3.13/bin/python3.13"
+
+# Validación local `installer -store` (suele colgarse). 1 = omitir (por defecto).
+# export MAS_SKIP_STORE_VALIDATION=0

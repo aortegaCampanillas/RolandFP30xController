@@ -33,6 +33,19 @@ ENV/
 # Roland app reverse engineering artifacts
 docs/roland_piano_app/
 
+# Mac App Store signing secrets — NUNCA subir al repositorio
+signing/local/mas.env
+signing/local/certs/
+signing/local/keys/
+signing/local/profiles/
+signing/.DS_Store
+.venv-mas/
+
+# Artefactos de build MAS
+*.pkg
+*.spec
+scripts/entitlements.mas.generated.plist
+
 # Qt / tooling
 *.qm
 .ruff_cache/
