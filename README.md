@@ -155,7 +155,124 @@ Use the blocks below as a starting point. **Replace** placeholders (`[…]`), ad
 
 ---
 
-### Microsoft Store (Windows)
+### Apple Mac App Store (macOS) — English
+
+**Name (30 characters max for display—verify in App Store Connect):**  
+e.g. `FP-30X Controller`
+
+**Subtitle (30 characters max):**  
+`Desktop MIDI for FP-30X`
+
+**Promotional text (170 characters max, editable without review):**  
+Control your Roland FP-30X from a desktop application.
+
+**Description (up to 4000 characters):**  
+Roland FP-30X Controller brings FP-30X editing to your Mac. Connect the piano via USB or bluetooth, select it as your MIDI device, and manage:
+
+**Piano settings**  
+Master volume and fine tuning, key touch response, brilliance, transpose, and ambience depth—plus quick metronome start/stop.
+
+**Tones**  
+Switch between Single, Split, Dual, and Twin. Browse presets by category (piano, E.piano, organ, strings, pads, synth, drums, GM2, and more). Adjust balances, split point, and octave shifts as modes require.
+
+**Metronome**  
+Set BPM, volume, click character, subdivision pattern, and beat/time signature from a clear grid.
+
+**Piano Designer**  
+Shape cabinet lid, resonances, temperament and root key. Save your setup back to the piano when supported.
+
+The interface is available in **English** and **Spanish**.
+
+**Keywords (100 characters total, comma-separated, no spaces after commas in App Store Connect):**  
+`midi,piano,fp30x,keyboard,metronome,transpose,digitalpiano,controller,tuning,layers,roland,usb`  
+*(93 chars — 7 chars of headroom. Do not include the app name; Apple indexes it separately. Avoid competitor brand names.)*
+
+| Keyword | Rationale |
+|---|---|
+| `midi` | Core technology; high-volume search term |
+| `piano` | Primary instrument type |
+| `fp30x` | Exact model — captures buyers who already own the piano |
+| `keyboard` | Broader instrument category |
+| `metronome` | Prominent feature; users search for metronome apps |
+| `transpose` | Specific parameter many pianists need |
+| `digitalpiano` | Compound form to cover "digital piano" searches |
+| `controller` | Describes the app role; common search term |
+| `tuning` | Covers master tuning and note voicing use cases |
+| `layers` | Dual/Split mode feature; differentiator |
+| `roland` | Brand association (no trademark conflict with keywords) |
+| `usb` | Clarifies connection method; filters out Bluetooth-only users |
+
+---
+
+### Apple Mac App Store (macOS) — Spanish
+
+**Name:**  
+`FP-30X Controller`
+
+**Subtitle:**  
+`Control MIDI para FP-30X`
+
+**Promotional text (170 characters max, editable without review):**  
+Controla tu Roland FP-30X desde una aplicación de escritorio.
+
+**Description (up to 4000 characters):**  
+Roland FP-30X Controller lleva la edición del FP-30X a tu Mac. Conecta el piano por USB o bluetooth, selecciónalo como dispositivo MIDI y gestiona:
+
+**Ajustes del piano**  
+Volumen maestro y afinación fina, respuesta al tacto, brillo, transposición y profundidad de ambiente, más arranque rápido del metrónomo.
+
+**Timbres**  
+Cambia entre los modos Single, Split, Dual y Twin. Explora presets por categoría (piano, piano eléctrico, órgano, cuerdas, pads, synth, batería, GM2 y más). Ajusta balances, punto de división y transposiciones de octava según el modo.
+
+**Metrónomo**  
+Configura BPM, volumen, tipo de click, patrón de subdivisión y compás desde una cuadrícula clara.
+
+**Piano Designer**  
+Moldea la posición de la tapa, resonancias, temperamento y tónica. Guarda la configuración en el piano cuando el instrumento lo permite.
+
+La interfaz está disponible en **español** e **inglés**.
+
+**Keywords (100 characters total, sin espacios tras las comas en App Store Connect):**  
+`midi,piano,fp30x,keyboard,metronome,transpose,digitalpiano,controller,tuning,layers,roland,usb`  
+*(93 chars — 7 chars de margen. No incluir el nombre de la app; Apple lo indexa por separado.)*
+
+| Keyword | Justificación |
+|---|---|
+| `midi` | Tecnología central; término de búsqueda de alto volumen |
+| `piano` | Tipo de instrumento principal |
+| `fp30x` | Modelo exacto — capta a compradores que ya tienen el piano |
+| `keyboard` | Categoría de instrumento más amplia |
+| `metronome` | Función destacada; los usuarios buscan apps de metrónomo |
+| `transpose` | Parámetro específico muy buscado por pianistas |
+| `digitalpiano` | Forma compuesta para cubrir búsquedas de "digital piano" |
+| `controller` | Describe el rol de la app; término de búsqueda común |
+| `tuning` | Cubre afinación maestra y Note voicing |
+| `layers` | Función Split/Dual; diferenciador frente a apps genéricas |
+| `roland` | Asociación de marca (sin conflicto de marca en keywords) |
+| `usb` | Aclara el método de conexión; filtra usuarios solo Bluetooth |
+
+---
+
+**Support URL:**  
+`https://[your-domain]/support`
+
+**Marketing URL (optional):**  
+`https://[your-domain]/`
+
+**Privacy policy URL:**  
+`https://[your-domain]/privacy`
+
+**What’s to Test (for App Review):**  
+1. Connect Roland FP-30X via USB.  
+2. Grant no special permissions unless future versions add microphone, files, or network.  
+3. Select MIDI port and Connect; adjust a slider and confirm the piano responds.  
+4. Note: Piano Designer / Note voicing require compatible mode (Single + supported tones)—dialog explains this.
+
+**Age rating:** Typically **4+** if no user-generated content, no web browsing, and no social features—confirm with Apple’s questionnaire.
+
+---
+
+### Microsoft Store (Windows) — English
 
 **Suggested product name (check trademark rules):**  
 `FP-30X MIDI Controller` *or* `[YourBrand] for FP-30X`
@@ -174,8 +291,23 @@ Roland FP-30X Controller is a desktop companion for musicians who use an FP-30X 
 
 The app speaks standard USB MIDI. An optional verbose mode helps diagnose connection issues. English and Spanish interface.
 
-**Search keywords (examples):**  
-MIDI, FP-30X, Roland piano, digital piano, metronome, transpose, USB MIDI, music production, keyboard
+**Search keywords** (Microsoft Store uses free-form tags; more flexibility than App Store):  
+`MIDI, FP-30X, Roland piano, digital piano, controller, metronome, transpose, USB MIDI, tuning, layers, keyboard, music production`
+
+| Keyword | Rationale |
+|---|---|
+| `MIDI` | Core technology |
+| `FP-30X` | Exact model — high-intent buyers |
+| `Roland piano` | Brand + category combination |
+| `digital piano` | Broad category |
+| `controller` | App role descriptor |
+| `metronome` | Prominent feature |
+| `transpose` | Specific parameter |
+| `USB MIDI` | Connection method; filters out Bluetooth-only users |
+| `tuning` | Master tuning and note voicing |
+| `layers` | Split/Dual mode differentiator |
+| `keyboard` | Instrument category |
+| `music production` | Reaches broader musician audience |
 
 **Capabilities / notes for submission:**  
 - Declares use of **MIDI devices** (USB).  
@@ -187,56 +319,42 @@ Initial release on Microsoft Store. [List fixes after updates.]
 
 ---
 
-### Apple Mac App Store (macOS)
+### Microsoft Store (Windows) — Spanish
 
-**Name (30 characters max for display—verify in App Store Connect):**  
-e.g. `FP-30X Controller`
+**Short description (≤ 500 characters recommended):**  
+Controla tu piano digital Roland FP-30X desde Windows: elige timbres, capas, metrónomo, afinación, ambiente y las opciones avanzadas del Piano Designer por USB MIDI. Edición cómoda en pantalla completa sin depender del pequeño panel del instrumento.
 
-**Subtitle (30 characters max):**  
-`Desktop MIDI for FP-30X`
+**Long description:**  
+Roland FP-30X Controller es el compañero de escritorio para músicos que usan un FP-30X conectado al PC. Selecciona entrada y salida MIDI y ajusta:
 
-**Promotional text (170 characters max, editable without review):**  
-Full-screen control of your FP-30X: tones, layers, metronome, tuning, and Piano Designer over USB MIDI. English & Spanish.
+- Ajustes del piano: volumen maestro y afinación, tacto, brillo, transposición, ambiente  
+- Timbres: modos Single, Split, Dual y Twin con selección de presets por categoría, balances, punto de división y transposiciones de octava  
+- Metrónomo: tempo, volumen, tipo de click, patrón rítmico y compás  
+- Piano Designer (Beta): tapa del cabinet, resonancias, temperamento y tónica, guardar en el instrumento  
+- Note voicing (Beta): afinación y carácter por tecla  
 
-**Description (up to 4000 characters):**  
-Roland FP-30X Controller brings FP-30X editing to your Mac. Connect the piano via USB, select it as your MIDI device, and manage:
+La app usa USB MIDI estándar. Un modo verbose opcional ayuda a diagnosticar problemas de conexión. Interfaz en español e inglés.
 
-**Piano settings**  
-Master volume and fine tuning, key touch response, brilliance, transpose, and ambience depth—plus quick metronome start/stop.
+**Search keywords** (Microsoft Store — formato libre, más flexibilidad que App Store):  
+`MIDI, FP-30X, Roland piano, piano digital, controlador, metrónomo, transposición, USB MIDI, afinación, capas, teclado, producción musical`
 
-**Tones**  
-Switch between Single, Split, Dual, and Twin. Browse presets by category (piano, E.piano, organ, strings, pads, synth, drums, GM2, and more). Adjust balances, split point, and octave shifts as modes require.
+| Keyword | Justificación |
+|---|---|
+| `MIDI` | Tecnología central |
+| `FP-30X` | Modelo exacto — compradores de alta intención |
+| `Roland piano` | Marca + categoría |
+| `piano digital` | Categoría amplia |
+| `controlador` | Describe el rol de la app |
+| `metrónomo` | Función destacada |
+| `transposición` | Parámetro específico muy buscado |
+| `USB MIDI` | Método de conexión; filtra usuarios solo Bluetooth |
+| `afinación` | Afinación maestra y Note voicing |
+| `capas` | Diferenciador Split/Dual frente a apps genéricas |
+| `teclado` | Categoría de instrumento |
+| `producción musical` | Alcanza a músicos con perfil productor |
 
-**Metronome**  
-Set BPM, volume, click character, subdivision pattern, and beat/time signature from a clear grid.
-
-**Piano Designer (Beta)**  
-Shape cabinet lid, resonances, temperament and root key. Save your setup back to the piano when supported.
-
-**Note voicing (Beta)**  
-Tweak tuning and character per key across the keyboard.
-
-The interface is available in **English** and **Spanish**. Optional MIDI logging helps support and power users.
-
-**Keywords (100 characters total, comma-separated, no spaces after commas in App Store Connect):**  
-midi,piano,fp30x,keyboard,metronome,transpose,digitalpiano,usb,roland,music
-
-**Support URL:**  
-`https://[your-domain]/support`
-
-**Marketing URL (optional):**  
-`https://[your-domain]/`
-
-**Privacy policy URL:**  
-`https://[your-domain]/privacy`
-
-**What’s to Test (for App Review):**  
-1. Connect Roland FP-30X via USB.  
-2. Grant no special permissions unless future versions add microphone, files, or network.  
-3. Select MIDI port and Connect; adjust a slider and confirm the piano responds.  
-4. Note: Piano Designer / Note voicing require compatible mode (Single + supported tones)—dialog explains this.
-
-**Age rating:** Typically **4+** if no user-generated content, no web browsing, and no social features—confirm with Apple’s questionnaire.
+**What’s new (template):**  
+Versión inicial en Microsoft Store. [Listar correcciones tras actualizaciones.]
 
 ---
 
