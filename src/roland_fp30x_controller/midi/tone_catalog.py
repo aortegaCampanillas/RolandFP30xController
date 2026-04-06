@@ -44,7 +44,6 @@ TONE_PRESETS: list[Tone] = [
     Tone("Nason Flt 8'", 16, 66, 20),
     Tone('ChurchOrgan1', 0, 66, 20),
     Tone('ChurchOrgan2', 8, 69, 20),
-    Tone('Accordion 1', 121, 0, 22),
     Tone('Epic Strings', 1, 67, 49),
     Tone('Rich Strings', 0, 71, 50),
     Tone('SymphonicStr1', 1, 67, 50),
@@ -179,17 +178,6 @@ CATEGORIES: list[str] = [
     "Piano", "E.Piano", "Organ", "Strings", "Pad", "Synth", "Other", "Drums", "GM2"
 ]
 
-# Los `categoryNo` DT1 de Roland Piano App no coinciden siempre con el índice visible
-# de nuestras categorías. Estos valores están verificados contra capturas/trazas reales.
-DT1_CATEGORY_TO_VISIBLE_CATEGORY: dict[int, str] = {
-    3: "Strings",
-    4: "Piano",
-    6: "Other",
-}
-VISIBLE_CATEGORY_TO_DT1_CATEGORY: dict[str, int] = {
-    visible: raw for raw, visible in DT1_CATEGORY_TO_VISIBLE_CATEGORY.items()
-}
-
 _CATEGORY_FOR: dict[str, str] = {
     # Piano
     'Concert Piano': 'Piano', 'Ballad Piano': 'Piano', 'Mellow Piano': 'Piano',
@@ -244,7 +232,7 @@ def tone_dt1_encoding(tone: Tone) -> tuple[int, int, int]:
     donde num es el índice del tono dentro de su categoría.
     """
     cat = category_of(tone)
-    cat_idx = VISIBLE_CATEGORY_TO_DT1_CATEGORY.get(cat, CATEGORIES.index(cat))
+    cat_idx = CATEGORIES.index(cat)
     tones_in_cat = TONE_CATEGORIES[cat]
     num = tones_in_cat.index(tone) if tone in tones_in_cat else 0
     return (cat_idx, num // 128, num % 128)
@@ -252,11 +240,9 @@ def tone_dt1_encoding(tone: Tone) -> tuple[int, int, int]:
 
 def tone_from_dt1_bytes(category_idx: int, num_hi: int, num_lo: int) -> Tone | None:
     """Inverso de los 3 bytes DT1 del piano → tono del catálogo, o None si fuera de rango."""
-    cat = DT1_CATEGORY_TO_VISIBLE_CATEGORY.get(category_idx)
-    if cat is None:
-        if not 0 <= category_idx < len(CATEGORIES):
-            return None
-        cat = CATEGORIES[category_idx]
+    if not 0 <= category_idx < len(CATEGORIES):
+        return None
+    cat = CATEGORIES[category_idx]
     tones = TONE_CATEGORIES.get(cat, [])
     num = num_hi * 128 + num_lo
     if not 0 <= num < len(tones):

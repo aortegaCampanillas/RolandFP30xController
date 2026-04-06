@@ -43,6 +43,7 @@ from roland_fp30x_controller.midi.tone_catalog import (
     TONE_CATEGORIES,
     TONE_PRESETS,
     Tone,
+    category_of,
     tone_dt1_encoding,
     tone_from_dt1_bytes,
 )
@@ -119,6 +120,7 @@ PIANO_POLL_SUPPRESS_AFTER_USER_CHANGE_S = 2.0
 PIANO_POLL_MESSAGE_GAP_S = 0.004
 # Tras cambiar Single/Split/Dual/Twin el piano necesita un instante; luego RQ1 de tonos.
 TONE_REFRESH_AFTER_MODE_MS = 120
+TONE_REFRESH_RETRY_WHEN_POPUP_OPEN_MS = 250
 # Individual note voicing: índice 0..87 = 88 teclas desde La0 (MIDI 21).
 INV_NOTE_MIDI_BASE = 21
 INV_NOTE_COUNT = 88
@@ -310,6 +312,7 @@ class TonePicker(QWidget):
         cat = category_of(tone)
         self._populating = True
         self._cat_combo.blockSignals(True)
+        self._tone_combo.blockSignals(True)
         found = False
         for i in range(self._cat_combo.count()):
             if self._cat_combo.itemData(i) == cat:
@@ -327,10 +330,14 @@ class TonePicker(QWidget):
             if self._tone_combo.itemData(i) == tone:
                 self._tone_combo.setCurrentIndex(i)
                 break
+        self._tone_combo.blockSignals(False)
         self._populating = False
 
     def set_label(self, text: str) -> None:
         self._label.setText(text)
+
+    def has_open_popup(self) -> bool:
+        return self._cat_combo.view().isVisible() or self._tone_combo.view().isVisible()
 
     def retranslate_categories(self, label_fn: Callable[[str], str]) -> None:
         self._category_label = label_fn
@@ -379,7 +386,11 @@ class MainWindow(QMainWindow):
         ("metronome_beat", (0x01, 0x00, 0x02, 0x1F), midix.metronome_beat_read),
         ("metronome_pattern", (0x01, 0x00, 0x02, 0x20), midix.metronome_pattern_read),
         ("split_point", (0x01, 0x00, 0x02, 0x01), midix.split_point_read),
+        ("split_right_octave_shift", (0x01, 0x00, 0x02, 0x16), midix.split_right_octave_shift_read),
+        ("split_left_octave_shift", (0x01, 0x00, 0x02, 0x02), midix.split_octave_shift_read),
         ("split_balance", (0x01, 0x00, 0x02, 0x03), midix.split_balance_read),
+        ("dual_tone1_octave_shift", (0x01, 0x00, 0x02, 0x17), midix.dual_tone1_octave_shift_read),
+        ("dual_tone2_octave_shift", (0x01, 0x00, 0x02, 0x04), midix.dual_octave_shift_read),
         ("dual_balance", (0x01, 0x00, 0x02, 0x05), midix.dual_balance_read),
         ("twin_piano_mode", (0x01, 0x00, 0x02, 0x06), midix.twin_piano_mode_read),
         ("tone_single", (0x01, 0x00, 0x02, 0x07), midix.tone_for_single_read),
@@ -387,12 +398,13 @@ class MainWindow(QMainWindow):
         ("tone_dual_layer", (0x01, 0x00, 0x02, 0x0D), midix.tone_for_dual_read),
     ]
 
-    def __init__(self, *, verbose: bool = False) -> None:
+    def __init__(self, *, verbose: bool = False, debug: bool = False) -> None:
         super().__init__()
         _icon_path = Path(__file__).resolve().parent.parent / "resources" / "app_icon.svg"
         if _icon_path.is_file():
             self.setWindowIcon(QIcon(str(_icon_path)))
         self._verbose = verbose
+        self._debug = debug
         self._settings = QSettings("RolandFP30xController", "RolandFP30xController")
         self._lang: Lang = _lang_from_settings_or_system_locale(self._settings)
         self._last_output_port: str | None = None
@@ -512,7 +524,10 @@ class MainWindow(QMainWindow):
 
             QTimer.singleShot(0, _deferred_repaint)
         if hasattr(self, "_read_piano_values_btn"):
-            self._read_piano_values_btn.setEnabled(connected and bool(self._last_input_port))
+            self._read_piano_values_btn.setVisible(self._debug)
+            self._read_piano_values_btn.setEnabled(
+                self._debug and connected and bool(self._last_input_port)
+            )
 
     def _repaint_piano_controls_area(self) -> None:
         """Fuerza repintado del bloque de pestañas (incl. viewports) y del pie."""
@@ -626,10 +641,18 @@ class MainWindow(QMainWindow):
                 return f"metronome_pattern={data[0]}"
             if pid == "split_point":
                 return f"split_point_midi={data[0]}"
+            if pid == "split_right_octave_shift":
+                return f"split_right_octave_shift={max(-4, min(4, int(data[0]) - 64))}"
+            if pid == "split_left_octave_shift":
+                return f"split_left_octave_shift={max(-4, min(4, int(data[0]) - 64))}"
             if pid == "split_balance":
                 panel = midix.split_balance_panel_from_sysex_byte(data[0])
                 left, right = midix.split_balance_display_lr(panel)
                 return f"split_balance panel={panel} display={left}:{right} raw=0x{data[0]:02X}"
+            if pid == "dual_tone1_octave_shift":
+                return f"dual_tone1_octave_shift={max(-4, min(4, int(data[0]) - 64))}"
+            if pid == "dual_tone2_octave_shift":
+                return f"dual_tone2_octave_shift={max(-4, min(4, int(data[0]) - 64))}"
             if pid == "dual_balance":
                 panel = midix.dual_balance_panel_from_sysex_byte(data[0])
                 left, right = midix.dual_balance_display_lr(panel)
@@ -986,7 +1009,12 @@ class MainWindow(QMainWindow):
         scroll.setFrameShape(QFrame.Shape.NoFrame)
         return scroll
 
-    def _make_shift_stepper(self, default: int = 0) -> tuple[QWidget, QLabel]:
+    def _make_shift_stepper(
+        self,
+        default: int = 0,
+        *,
+        on_change: Callable[[int], None] | None = None,
+    ) -> tuple[QWidget, QLabel]:
         """Devuelve (widget, value_label) para un control de octava -4..+4."""
         w = QWidget()
         h = QHBoxLayout(w)
@@ -1006,12 +1034,18 @@ class MainWindow(QMainWindow):
         def dec() -> None:
             v = int(val_lbl.text())
             if v > -4:
-                val_lbl.setText(str(v - 1))
+                v -= 1
+                val_lbl.setText(str(v))
+                if on_change is not None:
+                    on_change(v)
 
         def inc() -> None:
             v = int(val_lbl.text())
             if v < 4:
-                val_lbl.setText(str(v + 1))
+                v += 1
+                val_lbl.setText(str(v))
+                if on_change is not None:
+                    on_change(v)
 
         btn_minus.clicked.connect(dec)
         btn_plus.clicked.connect(inc)
@@ -1364,7 +1398,9 @@ class MainWindow(QMainWindow):
         # Right / Left shift
         rsh_row = QHBoxLayout()
         self._label_split_right_shift = QLabel()
-        self._split_right_shift_w, self._split_right_shift_lbl = self._make_shift_stepper()
+        self._split_right_shift_w, self._split_right_shift_lbl = self._make_shift_stepper(
+            on_change=self._send_split_right_octave_shift
+        )
         rsh_row.addWidget(self._label_split_right_shift)
         rsh_row.addStretch(1)
         rsh_row.addWidget(self._split_right_shift_w)
@@ -1373,7 +1409,9 @@ class MainWindow(QMainWindow):
 
         lsh_row = QHBoxLayout()
         self._label_split_left_shift = QLabel()
-        self._split_left_shift_w, self._split_left_shift_lbl = self._make_shift_stepper()
+        self._split_left_shift_w, self._split_left_shift_lbl = self._make_shift_stepper(
+            on_change=self._send_split_left_octave_shift
+        )
         lsh_row.addWidget(self._label_split_left_shift)
         lsh_row.addStretch(1)
         lsh_row.addWidget(self._split_left_shift_w)
@@ -1421,7 +1459,9 @@ class MainWindow(QMainWindow):
         # Tone 1 shift
         sh1_row = QHBoxLayout()
         self._label_dual_shift1 = QLabel()
-        self._dual_shift1_w, self._dual_shift1_lbl = self._make_shift_stepper()
+        self._dual_shift1_w, self._dual_shift1_lbl = self._make_shift_stepper(
+            on_change=self._send_dual_tone1_octave_shift
+        )
         sh1_row.addWidget(self._label_dual_shift1)
         sh1_row.addStretch(1)
         sh1_row.addWidget(self._dual_shift1_w)
@@ -1431,7 +1471,9 @@ class MainWindow(QMainWindow):
         # Tone 2 shift
         sh2_row = QHBoxLayout()
         self._label_dual_shift2 = QLabel()
-        self._dual_shift2_w, self._dual_shift2_lbl = self._make_shift_stepper()
+        self._dual_shift2_w, self._dual_shift2_lbl = self._make_shift_stepper(
+            on_change=self._send_dual_tone2_octave_shift
+        )
         sh2_row.addWidget(self._label_dual_shift2)
         sh2_row.addStretch(1)
         sh2_row.addWidget(self._dual_shift2_w)
@@ -2193,11 +2235,19 @@ class MainWindow(QMainWindow):
         parsed = self._bank_parser.feed(msg)
         if parsed is None:
             return
+        if not self._tone_uses_bank_program(self._active_primary_tone()):
+            return
         msb, lsb, pdoc = parsed
-        for i, t in enumerate(TONE_PRESETS):
+        for t in TONE_PRESETS:
             if t.bank_msb == msb and t.bank_lsb == lsb and t.program_doc == pdoc:
                 if self._single_picker.current_tone() != t:
                     self._single_picker.set_tone(t)
+                if self._split_right_picker.current_tone() != t:
+                    self._split_right_picker.set_tone(t)
+                if self._dual_picker1.current_tone() != t:
+                    self._dual_picker1.set_tone(t)
+                if self._twin_picker.current_tone() != t:
+                    self._twin_picker.set_tone(t)
                 self._set_status(self._tr("status_tone_from_piano", name=t.name))
                 return
         self._set_status(self._tr("status_piano_tone_unknown", msb=msb, lsb=lsb, pdoc=pdoc))
@@ -2443,6 +2493,55 @@ class MainWindow(QMainWindow):
         if until > self._piano_poll_suppress_until:
             self._piano_poll_suppress_until = until
 
+    def _tone_uses_bank_program(self, tone: Tone | None) -> bool:
+        if tone is None:
+            return False
+        return category_of(tone) in {"GM2", "Drums"}
+
+    def _active_primary_tone(self) -> Tone | None:
+        if self._keyboard_mode == 1:
+            return self._split_right_picker.current_tone()
+        if self._keyboard_mode == 2:
+            return self._dual_picker1.current_tone()
+        if self._keyboard_mode == 3:
+            return self._twin_picker.current_tone()
+        return self._single_picker.current_tone()
+
+    def _send_tone_bank_program(self, tone: Tone) -> None:
+        if not self._midi.is_open:
+            return
+        self._mark_app_bank_tx()
+        prog_midi = max(0, min(127, tone.program_doc - 1))
+        try:
+            core, latch = midix.bank_select_program_and_latch_parts(
+                MIDI_PART_CHANNEL, tone.bank_msb, tone.bank_lsb, prog_midi,
+                latch_after_program=True,
+            )
+            self._midi_user_send_all(core, gap_s=midix.DEFAULT_MESSAGE_GAP_S)
+            if latch:
+                time.sleep(midix.POST_PROGRAM_CHANGE_LATCH_DELAY_S)
+                self._midi_user_send_all(latch, gap_s=0.0)
+        except OSError:
+            self._disconnect_device(
+                status_key="status_device_lost", name=self._last_output_port or "?"
+            )
+        except (ValueError, RuntimeError) as e:
+            self._set_status(str(e))
+
+    def _any_tone_picker_popup_open(self) -> bool:
+        pickers = (
+            getattr(self, "_single_picker", None),
+            getattr(self, "_split_left_picker", None),
+            getattr(self, "_split_right_picker", None),
+            getattr(self, "_dual_picker1", None),
+            getattr(self, "_dual_picker2", None),
+            getattr(self, "_twin_picker", None),
+        )
+        return any(
+            isinstance(picker, TonePicker) and picker.has_open_popup()
+            for picker in pickers
+        )
+
     def _midi_user_send(self, msg: mido.Message) -> None:
         self._midi.send(msg)
         self._suppress_piano_state_poll_after_user_change()
@@ -2453,6 +2552,8 @@ class MainWindow(QMainWindow):
 
     def _request_piano_state(self) -> None:
         if not self._midi.is_open or not self._last_input_port:
+            return
+        if self._any_tone_picker_popup_open():
             return
         if time.monotonic() < self._piano_poll_suppress_until:
             return
@@ -2470,7 +2571,11 @@ class MainWindow(QMainWindow):
             midix.metronome_beat_read(),
             midix.metronome_pattern_read(),
             midix.split_point_read(),
+            midix.split_right_octave_shift_read(),
+            midix.split_octave_shift_read(),
             midix.split_balance_read(),
+            midix.dual_tone1_octave_shift_read(),
+            midix.dual_octave_shift_read(),
             midix.dual_balance_read(),
             midix.twin_piano_mode_read(),
             midix.tone_for_single_read(),
@@ -2494,10 +2599,17 @@ class MainWindow(QMainWindow):
     def _request_tones_from_piano(self) -> None:
         if not self._midi.is_open or not self._last_input_port:
             return
+        if self._any_tone_picker_popup_open():
+            self._tone_refresh_after_mode_timer.start(TONE_REFRESH_RETRY_WHEN_POPUP_OPEN_MS)
+            return
         tone_msgs = (
             midix.tone_for_single_read(),
             midix.tone_for_split_read(),
             midix.tone_for_dual_read(),
+            midix.split_right_octave_shift_read(),
+            midix.split_octave_shift_read(),
+            midix.dual_tone1_octave_shift_read(),
+            midix.dual_octave_shift_read(),
         )
         try:
             self._midi.send_all_spaced(tone_msgs, gap_s=PIANO_POLL_MESSAGE_GAP_S)
@@ -2594,9 +2706,19 @@ class MainWindow(QMainWindow):
             self._split_point_val = max(0, min(127, data[0]))
             self._update_split_point_label()
             return
-        # Split balance: 01 00 02 03 (byte centrado en 64, igual que dualBalance)
+        # Split right octave shift: 01 00 02 16
+        if addr == (0x01, 0x00, 0x02, 0x16) and data:
+            self._split_right_shift_lbl.setText(str(max(-4, min(4, int(data[0]) - 64))))
+            return
+        # Split left octave shift: 01 00 02 02
+        if addr == (0x01, 0x00, 0x02, 0x02) and data:
+            self._split_left_shift_lbl.setText(str(max(-4, min(4, int(data[0]) - 64))))
+            return
+        # Split balance: 01 00 02 03 (byte centrado en 64; pasos de 1 con 9=centro)
         if addr == (0x01, 0x00, 0x02, 0x03) and data:
-            val = midix.split_balance_panel_from_sysex_byte(data[0])
+            val = midix.split_balance_normalize_panel(
+                midix.split_balance_panel_from_sysex_byte(data[0])
+            )
             left, right = midix.split_balance_display_lr(val)
             self._suppress_slider_midi = True
             try:
@@ -2606,6 +2728,14 @@ class MainWindow(QMainWindow):
                 self._split_balance_lbl.setText(f"{left}:{right}")
             finally:
                 self._suppress_slider_midi = False
+            return
+        # Dual tone 1 octave shift: 01 00 02 17
+        if addr == (0x01, 0x00, 0x02, 0x17) and data:
+            self._dual_shift1_lbl.setText(str(max(-4, min(4, int(data[0]) - 64))))
+            return
+        # Dual tone 2 octave shift: 01 00 02 04
+        if addr == (0x01, 0x00, 0x02, 0x04) and data:
+            self._dual_shift2_lbl.setText(str(max(-4, min(4, int(data[0]) - 64))))
             return
         # Dual balance: 01 00 02 05 (byte centrado en 64; panel útil ~6..11 en FP-30X)
         if addr == (0x01, 0x00, 0x02, 0x05) and data:
@@ -2631,17 +2761,25 @@ class MainWindow(QMainWindow):
             return
         # Tones (catálogo interno Roland): Single / Split (mano izq.) / Dual (2.º tono)
         if addr == (0x01, 0x00, 0x02, 0x07) and len(data) >= 3:
+            if self._tone_uses_bank_program(self._active_primary_tone()):
+                return
             tone = tone_from_dt1_bytes(data[0], data[1], data[2])
             if tone is not None:
                 self._single_picker.set_tone(tone)
+                self._split_right_picker.set_tone(tone)
+                self._dual_picker1.set_tone(tone)
                 self._twin_picker.set_tone(tone)
             return
         if addr == (0x01, 0x00, 0x02, 0x0A) and len(data) >= 3:
+            if self._tone_uses_bank_program(self._split_left_picker.current_tone()):
+                return
             tone = tone_from_dt1_bytes(data[0], data[1], data[2])
             if tone is not None:
                 self._split_left_picker.set_tone(tone)
             return
         if addr == (0x01, 0x00, 0x02, 0x0D) and len(data) >= 3:
+            if self._tone_uses_bank_program(self._dual_picker2.current_tone()):
+                return
             tone = tone_from_dt1_bytes(data[0], data[1], data[2])
             if tone is not None:
                 self._dual_picker2.set_tone(tone)
@@ -2867,17 +3005,16 @@ class MainWindow(QMainWindow):
             return
         self._schedule_tone_refresh_from_piano()
 
-    def _send_tone_bank_program(self, tone: Tone) -> None:
+    def _send_tone_single(self, tone: Tone) -> None:
         if not self._midi.is_open:
             return
-        self._mark_app_bank_tx()
-        prog_midi = max(0, min(127, tone.program_doc - 1))
+        if self._tone_uses_bank_program(tone):
+            self._send_tone_bank_program(tone)
+            return
+        cat_idx, n_hi, n_lo = tone_dt1_encoding(tone)
+        num = n_hi * 128 + n_lo
         try:
-            core, latch = midix.bank_select_program_and_latch_parts(
-                MIDI_PART_CHANNEL, tone.bank_msb, tone.bank_lsb, prog_midi,
-                latch_after_program=False,
-            )
-            self._midi_user_send_all(core, gap_s=midix.DEFAULT_MESSAGE_GAP_S)
+            self._midi_user_send(midix.tone_for_single_set(cat_idx, num))
         except OSError:
             self._disconnect_device(
                 status_key="status_device_lost", name=self._last_output_port or "?"
@@ -2886,30 +3023,25 @@ class MainWindow(QMainWindow):
             self._set_status(str(e))
 
     def _on_single_tone_changed(self, tone: Tone | None) -> None:
-        if tone is None:
+        if tone is None or self._midi_sync_updating:
             return
-        cat_idx, n_hi, n_lo = tone_dt1_encoding(tone)
         self._set_status(self._tr("status_preset_offline", name=tone.name) if not self._midi.is_open else "")
         if not self._midi.is_open:
             return
-        try:
-            self._midi_user_send(midix.tone_for_single_set(cat_idx, cat_idx * 0 + (n_hi * 128 + n_lo)))
-        except OSError:
-            self._disconnect_device(
-                status_key="status_device_lost", name=self._last_output_port or "?"
-            )
-        except (ValueError, RuntimeError):
-            pass
-        self._send_tone_bank_program(tone)
+        self._send_tone_single(tone)
+        if not self._tone_uses_bank_program(tone):
+            self._schedule_tone_refresh_from_piano()
         self._set_status(self._tr("status_tone_from_piano", name=tone.name))
 
     def _on_split_right_tone_changed(self, tone: Tone | None) -> None:
-        if tone is None or not self._midi.is_open:
+        if tone is None or self._midi_sync_updating or not self._midi.is_open:
             return
-        self._send_tone_bank_program(tone)
+        self._send_tone_single(tone)
+        if not self._tone_uses_bank_program(tone):
+            self._schedule_tone_refresh_from_piano()
 
     def _on_split_left_tone_changed(self, tone: Tone | None) -> None:
-        if tone is None or not self._midi.is_open:
+        if tone is None or self._midi_sync_updating or not self._midi.is_open:
             return
         cat_idx, n_hi, n_lo = tone_dt1_encoding(tone)
         num = n_hi * 128 + n_lo
@@ -2923,12 +3055,14 @@ class MainWindow(QMainWindow):
             self._set_status(str(e))
 
     def _on_dual_tone1_changed(self, tone: Tone | None) -> None:
-        if tone is None or not self._midi.is_open:
+        if tone is None or self._midi_sync_updating or not self._midi.is_open:
             return
-        self._send_tone_bank_program(tone)
+        self._send_tone_single(tone)
+        if not self._tone_uses_bank_program(tone):
+            self._schedule_tone_refresh_from_piano()
 
     def _on_dual_tone2_changed(self, tone: Tone | None) -> None:
-        if tone is None or not self._midi.is_open:
+        if tone is None or self._midi_sync_updating or not self._midi.is_open:
             return
         cat_idx, n_hi, n_lo = tone_dt1_encoding(tone)
         num = n_hi * 128 + n_lo
@@ -2942,11 +3076,23 @@ class MainWindow(QMainWindow):
             self._set_status(str(e))
 
     def _on_twin_tone_changed(self, tone: Tone | None) -> None:
-        if tone is None or not self._midi.is_open:
+        if tone is None or self._midi_sync_updating or not self._midi.is_open:
             return
-        self._send_tone_bank_program(tone)
+        self._send_tone_single(tone)
+        if not self._tone_uses_bank_program(tone):
+            self._schedule_tone_refresh_from_piano()
 
     def _on_split_balance_changed(self, value: int) -> None:
+        normalized = midix.split_balance_normalize_panel(value)
+        if normalized != value:
+            self._suppress_slider_midi = True
+            try:
+                self._split_balance_sld.blockSignals(True)
+                self._split_balance_sld.setValue(normalized)
+                self._split_balance_sld.blockSignals(False)
+            finally:
+                self._suppress_slider_midi = False
+            value = normalized
         left, right = midix.split_balance_display_lr(value)
         self._split_balance_lbl.setText(f"{left}:{right}")
         if not self._midi.is_open:
@@ -3000,6 +3146,46 @@ class MainWindow(QMainWindow):
             return
         try:
             self._midi_user_send(midix.split_point_set(self._split_point_val))
+        except OSError:
+            self._disconnect_device(
+                status_key="status_device_lost", name=self._last_output_port or "?"
+            )
+
+    def _send_split_right_octave_shift(self, value: int) -> None:
+        if not self._midi.is_open:
+            return
+        try:
+            self._midi_user_send(midix.split_right_octave_shift_set(value))
+        except OSError:
+            self._disconnect_device(
+                status_key="status_device_lost", name=self._last_output_port or "?"
+            )
+
+    def _send_split_left_octave_shift(self, value: int) -> None:
+        if not self._midi.is_open:
+            return
+        try:
+            self._midi_user_send(midix.split_octave_shift_set(value))
+        except OSError:
+            self._disconnect_device(
+                status_key="status_device_lost", name=self._last_output_port or "?"
+            )
+
+    def _send_dual_tone1_octave_shift(self, value: int) -> None:
+        if not self._midi.is_open:
+            return
+        try:
+            self._midi_user_send(midix.dual_tone1_octave_shift_set(value))
+        except OSError:
+            self._disconnect_device(
+                status_key="status_device_lost", name=self._last_output_port or "?"
+            )
+
+    def _send_dual_tone2_octave_shift(self, value: int) -> None:
+        if not self._midi.is_open:
+            return
+        try:
+            self._midi_user_send(midix.dual_octave_shift_set(value))
         except OSError:
             self._disconnect_device(
                 status_key="status_device_lost", name=self._last_output_port or "?"

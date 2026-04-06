@@ -337,17 +337,27 @@ def split_balance_display_lr(panel_value_0_18: int) -> tuple[int, int]:
     return 1 + (8 * (18 - v)) // 9, 9
 
 
-def split_balance_sysex_byte(value: int) -> int:
-    """Índice de panel 0..18 (9=centro) al byte DT1 del FP-30X: `64 + (v−9)×3`."""
+def split_balance_normalize_panel(value: int) -> int:
+    """Colapsa los dos pasos redundantes de los extremos al valor visible final."""
     v = max(0, min(18, int(value)))
-    return max(0, min(127, 64 + (v - 9) * 3))
+    if v <= 1:
+        return 0
+    if v >= 17:
+        return 18
+    return v
+
+
+def split_balance_sysex_byte(value: int) -> int:
+    """Índice de panel 0..18 (9=centro) al byte DT1 del FP-30X, centrado en 64."""
+    v = max(0, min(18, int(value)))
+    return max(0, min(127, 64 + (v - 9)))
 
 
 def split_balance_panel_from_sysex_byte(raw: int) -> int:
     """Invierte el byte RQ1/DT1 al índice de panel 0..18."""
     if 0 <= raw <= 18:
-        return max(0, min(18, raw))
-    v = int(round((raw - 64) / 3 + 9))
+        return max(0, min(18, int(raw)))
+    v = int(round(int(raw) - 64 + 9))
     return max(0, min(18, v))
 
 
@@ -362,14 +372,14 @@ def dual_balance_display_lr(panel_value_6_11: int) -> tuple[int, int]:
 
 
 def split_balance_set(value: int) -> mido.Message:
-    """Balance Split (01 00 02 03). Panel 0..18 (9=centro); byte DT1 centrado en 64."""
+    """Balance Split (01 00 02 03). Panel 0..18 (9=centro)."""
     return roland_data_set_1((0x01, 0x00, 0x02, 0x03), (split_balance_sysex_byte(value),))
 
 
 def split_balance_control_changes(value: int) -> list[mido.Message]:
     """CC7 en mano izquierda y derecha (canales 2 y 4): refuerzo audible en todo el rango, como en Dual."""
-    b = split_balance_sysex_byte(value)
-    d = b - 64
+    v = max(0, min(18, int(value)))
+    d = v - 9
     left = max(1, min(127, 100 - d))
     right = max(1, min(127, 100 + d))
     return [
@@ -427,9 +437,35 @@ def split_octave_shift_set(value: int) -> mido.Message:
     return roland_data_set_1((0x01, 0x00, 0x02, 0x02), (value + 64,))
 
 
+def split_octave_shift_read() -> mido.Message:
+    return roland_data_request_1((0x01, 0x00, 0x02, 0x02), (0x00, 0x00, 0x00, 0x01))
+
+
 def dual_octave_shift_set(value: int) -> mido.Message:
     """Transposición de octava en Dual (01 00 02 04). Encoding: value+64."""
     return roland_data_set_1((0x01, 0x00, 0x02, 0x04), (value + 64,))
+
+
+def dual_octave_shift_read() -> mido.Message:
+    return roland_data_request_1((0x01, 0x00, 0x02, 0x04), (0x00, 0x00, 0x00, 0x01))
+
+
+def split_right_octave_shift_set(value: int) -> mido.Message:
+    """Transposición de octava de la mano derecha en Split (01 00 02 16). Encoding: value+64."""
+    return roland_data_set_1((0x01, 0x00, 0x02, 0x16), (value + 64,))
+
+
+def split_right_octave_shift_read() -> mido.Message:
+    return roland_data_request_1((0x01, 0x00, 0x02, 0x16), (0x00, 0x00, 0x00, 0x01))
+
+
+def dual_tone1_octave_shift_set(value: int) -> mido.Message:
+    """Transposición de octava del tono 1 en Dual (01 00 02 17). Encoding: value+64."""
+    return roland_data_set_1((0x01, 0x00, 0x02, 0x17), (value + 64,))
+
+
+def dual_tone1_octave_shift_read() -> mido.Message:
+    return roland_data_request_1((0x01, 0x00, 0x02, 0x17), (0x00, 0x00, 0x00, 0x01))
 
 
 def twin_piano_mode_set(mode: int) -> mido.Message:
