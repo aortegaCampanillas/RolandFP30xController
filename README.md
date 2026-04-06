@@ -1,6 +1,6 @@
 # Roland FP-30X Controller
 
-A **desktop application** for **macOS** and **Windows** that lets you **control your Roland FP-30X digital piano from your computer** over standard **USB MIDI**. Adjust sounds, layers, metronome, tuning, and deep piano parameters from a single window—without reaching for the instrument’s panel for every change.
+A **desktop application** for **macOS** and **Windows** that lets you **control your Roland FP-30X digital piano from your computer** over standard **USB MIDI** or **Bluetooth**. Adjust sounds, layers, metronome, tuning, and deep piano parameters from a single window—without reaching for the instrument’s panel for every change.
 
 > **Disclaimer:** This is an **independent, open-source project**. It is **not** affiliated with, endorsed by, or sponsored by **Roland Corporation**. *Roland* and *FP-30X* are trademarks of their respective owners. If you publish this app in a store, verify naming and trademark use with qualified counsel and comply with each store’s policies.
 
