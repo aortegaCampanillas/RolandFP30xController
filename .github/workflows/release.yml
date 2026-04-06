@@ -9,16 +9,9 @@ permissions:
   contents: write
 
 jobs:
-  # ── macOS (Intel x86_64 y Apple Silicon arm64) ───────────────────────────
+  # ── macOS (Apple Silicon arm64) ──────────────────────────────────────────
   build-macos:
-    strategy:
-      matrix:
-        include:
-          - runner: macos-13       # Intel x86_64
-            arch: intel
-          - runner: macos-latest   # Apple Silicon arm64
-            arch: arm64
-    runs-on: ${{ matrix.runner }}
+    runs-on: macos-latest
 
     steps:
       - uses: actions/checkout@v4
@@ -56,13 +49,13 @@ jobs:
             --window-size 600 300 \
             --icon-size 100 \
             --app-drop-link 425 120 \
-            "PianoPilot-for-FP30X-${{ github.ref_name }}-mac-${{ matrix.arch }}.dmg" \
+            "PianoPilot-for-FP30X-${{ github.ref_name }}-mac-arm64.dmg" \
             "dist/PianoPilot for FP-30X.app"
 
       - uses: actions/upload-artifact@v4
         with:
-          name: macos-${{ matrix.arch }}
-          path: "PianoPilot-for-FP30X-${{ github.ref_name }}-mac-${{ matrix.arch }}.dmg"
+          name: macos-arm64
+          path: "PianoPilot-for-FP30X-${{ github.ref_name }}-mac-arm64.dmg"
 
   # ── Windows ──────────────────────────────────────────────────────────────
   build-windows:
