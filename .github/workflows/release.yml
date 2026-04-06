@@ -81,7 +81,9 @@ jobs:
             --onefile `
             --name "PianoPilot for FP-30X" `
             --collect-all roland_fp30x_controller `
+            --collect-all mido `
             --hidden-import mido.backends.rtmidi `
+            --hidden-import rtmidi `
             src/roland_fp30x_controller/__main__.py
 
       - name: Rename artifact

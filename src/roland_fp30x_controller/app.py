@@ -4,6 +4,7 @@ import argparse
 import sys
 from pathlib import Path
 
+
 from PySide6.QtCore import QBuffer, QByteArray, QIODevice, Qt
 from PySide6.QtGui import QIcon, QImage, QPainter
 from PySide6.QtSvg import QSvgRenderer
@@ -180,6 +181,26 @@ QMessageBox QLabel { color: #e0e0e0; }
 """
 
 
+def _redirect_stderr_to_log_on_windows() -> None:
+    """En Windows --windowed, sys.stderr es None y los prints de verbose se pierden.
+
+    Redirige stderr (y stdout) a un fichero de log junto al ejecutable para que
+    el modo /verbose produzca output útil. No hace nada en macOS/Linux ni cuando
+    ya hay consola.
+    """
+    if sys.platform != "win32":
+        return
+    if sys.stderr is not None:
+        return  # ya hay consola (p.ej. ejecutado desde cmd.exe con build de consola)
+    try:
+        log_path = Path(sys.executable).resolve().parent / "pianopilot_verbose.log"
+        f = open(log_path, "w", encoding="utf-8", buffering=1)  # noqa: SIM115
+        sys.stdout = f
+        sys.stderr = f
+    except OSError:
+        pass  # sin permisos de escritura → sin log, no fatal
+
+
 def _application_icon() -> QIcon:
     """Icono propio (SVG en paquete); sin marca ni diseño de producto Roland."""
     path = Path(__file__).resolve().parent / "resources" / "app_icon.svg"
@@ -260,6 +281,8 @@ def run(argv: list[str] | None = None) -> int:
     args, qt_argv = parser.parse_known_args(filtered)
     verbose = args.verbose or verbose_slash
     debug = args.debug or debug_slash
+    if verbose or debug:
+        _redirect_stderr_to_log_on_windows()
     app = QApplication([sys.argv[0], *qt_argv])
     app.setWindowIcon(_application_icon())
     if sys.platform == "darwin":

@@ -709,7 +709,7 @@ class MainWindow(QMainWindow):
         msgs = [factory() for _pid, _addr, factory in self._READ_PIANO_VALUE_SPECS]
         try:
             for m in msgs:
-                if not self._verbose:
+                if self._verbose:
                     self._print_midi_trace("OUT", m)
             self._midi.send_all_spaced(msgs, gap_s=0.05)
         except OSError:

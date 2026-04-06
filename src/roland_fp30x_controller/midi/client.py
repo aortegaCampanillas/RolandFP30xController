@@ -45,7 +45,14 @@ class MidiOutClient:
             raise RuntimeError(msg)
         if self._trace_send is not None:
             self._trace_send(message)
-        self._port.send(message)
+        try:
+            self._port.send(message)
+        except OSError:
+            raise
+        except Exception as exc:
+            # python-rtmidi puede lanzar rtmidi.Error (no subclase de RuntimeError/OSError).
+            # Lo normalizamos para que los manejadores de la UI lo capturen correctamente.
+            raise RuntimeError(str(exc)) from exc
 
     def send_all(self, messages: Iterable[mido.Message]) -> None:
         for m in messages:
