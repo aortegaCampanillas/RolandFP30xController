@@ -72,13 +72,17 @@ jobs:
         run: |
           pip install --upgrade pip
           pip install -e .
-          pip install pyinstaller
+          pip install pyinstaller pillow
+
+      - name: Generate .ico icon
+        run: python scripts/make_ico.py app_icon.ico
 
       - name: Build .exe
         run: |
           pyinstaller `
             --windowed `
             --onefile `
+            --icon app_icon.ico `
             --name "PianoPilot for FP-30X" `
             --collect-all roland_fp30x_controller `
             --collect-all mido `
