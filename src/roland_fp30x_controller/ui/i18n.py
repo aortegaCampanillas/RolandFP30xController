@@ -21,6 +21,14 @@ STRINGS: dict[Lang, dict[str, str]] = {
         "btn_connect": "Connect",
         "btn_disconnect": "Disconnect",
         "btn_connect_help": "Help",
+        "btn_read_piano_values": "Read piano values",
+        "btn_read_piano_values_tip": (
+            "Send RQ1 reads and print DT1 replies as traces on stderr (terminal / debug console)."
+        ),
+        "err_read_piano_needs_sync": (
+            "Connect with a MIDI input port (same device) so the piano can answer. "
+            "Read piano values needs incoming SysEx."
+        ),
         "dlg_connect_help_title": "How to connect the FP-30X",
         "help_connect_skip_startup": "Don't show this dialog when the application starts",
         "help_connect_close": "Close",
@@ -114,12 +122,6 @@ STRINGS: dict[Lang, dict[str, str]] = {
         ),
         "label_master_tuning": "Master Tuning",
         "tab_piano_designer": "Piano Designer (Beta)",
-        "tab_individual_voicing": "Note voicing (Beta)",
-        "inv_hint": (
-            "Adjust per-key tuning (−50…+50 cents) and character (−5…+5). "
-            "Same requirements as Piano Designer: Single mode and compatible tones. "
-            "Use Save on the Piano Designer tab to store settings in the piano."
-        ),
         "inv_label_note": "Key",
         "pd_warning_title": "Piano Designer",
         "pd_warning_text": (
@@ -132,6 +134,7 @@ STRINGS: dict[Lang, dict[str, str]] = {
         "pd_section_damper": "Damper",
         "pd_section_keyboard": "Keyboard",
         "pd_section_tuning": "Tuning",
+        "pd_section_note_voicing": "Per-note voicing",
         "pd_label_lid": "Lid",
         "pd_label_string_resonance": "String Resonance",
         "pd_label_damper_resonance": "Damper Resonance",
@@ -149,9 +152,11 @@ STRINGS: dict[Lang, dict[str, str]] = {
         "tab_metronome": "Metronome",
         "label_key_touch": "Key Touch",
         "key_touch_fix": "Fix",
+        "key_touch_super_light": "Super Light",
         "key_touch_light": "Light",
         "key_touch_medium": "Medium",
         "key_touch_heavy": "Heavy",
+        "key_touch_super_heavy": "Super Heavy",
         "label_brilliance": "Brilliance",
         "label_ambience": "Ambience Depth",
         "label_connection": "Connection",
@@ -232,6 +237,14 @@ STRINGS: dict[Lang, dict[str, str]] = {
         "btn_connect": "Conectar",
         "btn_disconnect": "Desconectar",
         "btn_connect_help": "Ayuda",
+        "btn_read_piano_values": "Leer valores del piano",
+        "btn_read_piano_values_tip": (
+            "Envía lecturas RQ1 y escribe las respuestas DT1 como trazas en stderr (terminal o consola de depuración)."
+        ),
+        "err_read_piano_needs_sync": (
+            "Conecta usando un puerto MIDI de entrada (el mismo dispositivo) para que el piano pueda responder. "
+            "Leer valores requiere recibir SysEx entrantes."
+        ),
         "dlg_connect_help_title": "Cómo conectar la FP-30X",
         "help_connect_skip_startup": "No volver a mostrar este mensaje al iniciar la aplicación",
         "help_connect_close": "Cerrar",
@@ -338,19 +351,15 @@ STRINGS: dict[Lang, dict[str, str]] = {
         "tab_metronome": "Metrónomo",
         "label_key_touch": "Tacto de teclas",
         "key_touch_fix": "Fijo",
+        "key_touch_super_light": "Super suave",
         "key_touch_light": "Suave",
         "key_touch_medium": "Medio",
         "key_touch_heavy": "Fuerte",
+        "key_touch_super_heavy": "Super fuerte",
         "label_brilliance": "Brillo",
         "label_ambience": "Profundidad del ambiente",
         "label_master_tuning": "Afinación maestra",
         "tab_piano_designer": "Piano Designer (Beta)",
-        "tab_individual_voicing": "Voicing por nota (Beta)",
-        "inv_hint": (
-            "Ajusta la afinación por tecla (−50…+50 céntimos) y el carácter (−5…+5). "
-            "Mismas condiciones que Piano Designer: modo Simple y tonos compatibles. "
-            "Usa Guardar en el piano en la pestaña Piano Designer para guardar en el instrumento."
-        ),
         "inv_label_note": "Tecla",
         "pd_warning_title": "Piano Designer",
         "pd_warning_text": (
@@ -363,6 +372,7 @@ STRINGS: dict[Lang, dict[str, str]] = {
         "pd_section_damper": "Apagador",
         "pd_section_keyboard": "Teclado",
         "pd_section_tuning": "Afinación",
+        "pd_section_note_voicing": "Voicing por nota",
         "pd_label_lid": "Apertura de tapa",
         "pd_label_string_resonance": "Resonancia de cuerdas",
         "pd_label_damper_resonance": "Resonancia del apagador",

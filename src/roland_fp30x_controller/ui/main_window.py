@@ -4,6 +4,7 @@ import sys
 import time
 from collections.abc import Callable, Iterable
 from pathlib import Path
+from typing import ClassVar
 
 import mido
 from PySide6.QtCore import QLocale, QSettings, Qt, QTimer
@@ -74,14 +75,14 @@ TONE_CATEGORY_I18N_KEYS: dict[str, str] = {
 
 DEFAULT_PRESET_INDEX = 0
 MIDI_PART_CHANNEL = 4
-DEFAULT_MASTER_VOLUME = 127
+DEFAULT_MASTER_VOLUME = midix.MASTER_VOLUME_DT1_MAX
 DEFAULT_TRANSPOSE = 0
 DEFAULT_TEMPO = 120
 DEFAULT_BRILLIANCE = 0
 DEFAULT_AMBIENCE = 1
-DEFAULT_KEY_TOUCH = 2
+DEFAULT_KEY_TOUCH = 3  # Medium (orden 0..5 como app Roland, captura 31)
 DEFAULT_KEYBOARD_MODE = 0   # Single
-DEFAULT_BALANCE = 9         # centre (0-18 range)
+DEFAULT_BALANCE = 9  # centro (9:9); Dual acota slider a DUAL_BALANCE_PANEL_*; Split usa rango 0..18
 DEFAULT_TWIN_MODE = 0       # Pair
 DEFAULT_METRO_VOLUME = 5
 DEFAULT_METRO_TONE = 0      # Click
@@ -90,6 +91,16 @@ DEFAULT_METRO_PATTERN = 0   # Off (01 00 02 20)
 
 # Columnas en rejilla para compás y patrón (misma disposición que la app Roland).
 METRO_GRID_COLS = 5
+
+# Key Touch: mismos 6 valores y orden que Roland Piano App (docs/.../31 key tuch.png).
+_KEY_TOUCH_I18N_KEYS = (
+    "key_touch_fix",
+    "key_touch_super_light",
+    "key_touch_light",
+    "key_touch_medium",
+    "key_touch_heavy",
+    "key_touch_super_heavy",
+)
 
 TEMPO_MIN = 20
 TEMPO_MAX = 250
@@ -349,6 +360,32 @@ class MainWindow(QMainWindow):
         "pd_temp_arabic",
     )
 
+    # RQ1 → DT1 para «Read piano values» (nombre log, dirección de respuesta, fábrica del RQ1).
+    _READ_PIANO_VALUE_SPECS: ClassVar[
+        list[tuple[str, tuple[int, int, int, int], Callable[[], mido.Message]]]
+    ] = [
+        ("master_volume", (0x01, 0x00, 0x02, 0x13), midix.master_volume_read),
+        ("sequencer_tempo", (0x01, 0x00, 0x01, 0x08), midix.metronome_read_tempo),
+        ("metronome_status", (0x01, 0x00, 0x01, 0x0F), midix.metronome_read_status),
+        ("key_transpose", (0x01, 0x00, 0x01, 0x01), midix.key_transpose_read),
+        ("brilliance", (0x01, 0x00, 0x02, 0x1C), midix.brilliance_read),
+        ("ambience", (0x01, 0x00, 0x02, 0x1A), midix.ambience_read),
+        ("key_touch", (0x01, 0x00, 0x02, 0x1D), midix.key_touch_read),
+        ("keyboard_mode", (0x01, 0x00, 0x02, 0x00), midix.keyboard_mode_read),
+        ("master_tuning", (0x01, 0x00, 0x02, 0x18), midix.master_tuning_read),
+        ("metronome_volume", (0x01, 0x00, 0x02, 0x21), midix.metronome_volume_read),
+        ("metronome_tone", (0x01, 0x00, 0x02, 0x22), midix.metronome_tone_read),
+        ("metronome_beat", (0x01, 0x00, 0x02, 0x1F), midix.metronome_beat_read),
+        ("metronome_pattern", (0x01, 0x00, 0x02, 0x20), midix.metronome_pattern_read),
+        ("split_point", (0x01, 0x00, 0x02, 0x01), midix.split_point_read),
+        ("split_balance", (0x01, 0x00, 0x02, 0x03), midix.split_balance_read),
+        ("dual_balance", (0x01, 0x00, 0x02, 0x05), midix.dual_balance_read),
+        ("twin_piano_mode", (0x01, 0x00, 0x02, 0x06), midix.twin_piano_mode_read),
+        ("tone_single", (0x01, 0x00, 0x02, 0x07), midix.tone_for_single_read),
+        ("tone_split_left", (0x01, 0x00, 0x02, 0x0A), midix.tone_for_split_read),
+        ("tone_dual_layer", (0x01, 0x00, 0x02, 0x0D), midix.tone_for_dual_read),
+    ]
+
     def __init__(self, *, verbose: bool = False) -> None:
         super().__init__()
         _icon_path = Path(__file__).resolve().parent.parent / "resources" / "app_icon.svg"
@@ -400,6 +437,12 @@ class MainWindow(QMainWindow):
         self._port_watchdog_timer.timeout.connect(self._check_connected_ports)
         self._port_watchdog_timer.start()
 
+        self._piano_values_read_active = False
+        self._piano_values_read_pending: dict[tuple[int, int, int, int], str] = {}
+        self._piano_values_read_timer = QTimer(self)
+        self._piano_values_read_timer.setSingleShot(True)
+        self._piano_values_read_timer.timeout.connect(self._piano_values_read_timeout)
+
         central = QWidget()
         self.setCentralWidget(central)
         root = QVBoxLayout(central)
@@ -419,20 +462,17 @@ class MainWindow(QMainWindow):
         self._tab_widget.addTab(self._build_tones_tab(), "")
         self._tab_widget.addTab(self._build_metronome_tab(), "")
         self._tab_widget.addTab(self._build_piano_designer_tab(), "")
-        self._tab_widget.addTab(self._build_individual_voicing_tab(), "")
         self._pd_warning_shown = self._settings.value("pd_warning_shown", False, type=bool)
         piano_outer.addWidget(self._tab_widget, stretch=1)
 
-        reset_bar = QHBoxLayout()
+        self._piano_footer_wrap = QWidget()
+        reset_bar = QHBoxLayout(self._piano_footer_wrap)
         reset_bar.setContentsMargins(16, 8, 16, 8)
         self._reset_btn = QPushButton()
         self._reset_btn.clicked.connect(self._reset_defaults)
         reset_bar.addWidget(self._reset_btn)
         reset_bar.addStretch(1)
-        piano_outer.addLayout(reset_bar)
-
-        self._piano_controls_opacity = QGraphicsOpacityEffect(self._piano_controls_wrap)
-        self._piano_controls_opacity.setOpacity(0.42)
+        piano_outer.addWidget(self._piano_footer_wrap)
 
         root.addWidget(self._piano_controls_wrap, stretch=1)
 
@@ -452,14 +492,48 @@ class MainWindow(QMainWindow):
         connected = self._midi.is_open
         self._piano_controls_wrap.setEnabled(connected)
         if connected:
-            self._piano_controls_wrap.setGraphicsEffect(None)
+            self._tab_widget.setGraphicsEffect(None)
+            self._piano_footer_wrap.setGraphicsEffect(None)
         else:
-            # Quitar y volver a aplicar el efecto evita que, tras reconectar, el atenuado
-            # no se repinte al desconectar de nuevo (algunas combinaciones Qt/estilo).
-            self._piano_controls_wrap.setGraphicsEffect(None)
-            self._piano_controls_wrap.setGraphicsEffect(self._piano_controls_opacity)
-        self._piano_controls_wrap.update()
-        self._tab_widget.update()
+            # setGraphicsEffect(None) destruye el efecto anterior; no reutilizar punteros guardados.
+            tab_fx = QGraphicsOpacityEffect(self._tab_widget)
+            tab_fx.setOpacity(0.42)
+            foot_fx = QGraphicsOpacityEffect(self._piano_footer_wrap)
+            foot_fx.setOpacity(0.42)
+            self._tab_widget.setGraphicsEffect(tab_fx)
+            self._piano_footer_wrap.setGraphicsEffect(foot_fx)
+        self._repaint_piano_controls_area()
+        if not connected:
+
+            def _deferred_repaint() -> None:
+                if not self._midi.is_open:
+                    self._repaint_piano_controls_area()
+
+            QTimer.singleShot(0, _deferred_repaint)
+        if hasattr(self, "_read_piano_values_btn"):
+            self._read_piano_values_btn.setEnabled(connected and bool(self._last_input_port))
+
+    def _repaint_piano_controls_area(self) -> None:
+        """Fuerza repintado del bloque de pestañas (incl. viewports) y del pie."""
+        w = self._piano_controls_wrap
+        w.update()
+        w.repaint()
+        tw = self._tab_widget
+        tw.update()
+        tw.repaint()
+        for i in range(tw.count()):
+            page = tw.widget(i)
+            if page is None:
+                continue
+            page.update()
+            page.repaint()
+            if isinstance(page, QScrollArea):
+                vp = page.viewport()
+                if vp is not None:
+                    vp.update()
+                    vp.repaint()
+        self._piano_footer_wrap.update()
+        self._piano_footer_wrap.repaint()
 
     def _apply_initial_window_size(self) -> None:
         self.setMinimumWidth(WINDOW_MIN_WIDTH)
@@ -499,6 +573,127 @@ class MainWindow(QMainWindow):
             raw = "?"
         print(f"MIDI [{direction}] {msg!s}  |  {raw}", file=sys.stderr, flush=True)
 
+    def _piano_value_summary(self, pid: str, data: tuple[int, ...]) -> str:
+        if not data:
+            return "(sin datos)"
+        try:
+            if pid == "master_volume":
+                return f"master_volume={data[0]}"
+            if pid == "sequencer_tempo" and len(data) >= 2:
+                return f"tempo_bpm={data[0] * 128 + data[1]}"
+            if pid == "metronome_status":
+                return f"metronome_on={bool(data[0])}"
+            if pid == "key_transpose":
+                return f"transpose_semitones={int(data[0]) - 64}"
+            if pid == "brilliance":
+                return f"brilliance={max(-1, min(1, data[0] - 64))}"
+            if pid == "ambience":
+                return f"ambience={max(0, min(10, data[0]))}"
+            if pid == "key_touch":
+                k = max(0, min(5, data[0]))
+                names = (
+                    "Fix",
+                    "Super Light",
+                    "Light",
+                    "Medium",
+                    "Heavy",
+                    "Super Heavy",
+                )
+                return f"key_touch={names[k]} ({k})"
+            if pid == "keyboard_mode":
+                m = max(0, min(3, data[0]))
+                modes = ("Single", "Split", "Dual", "TwinPiano")
+                return f"keyboard_mode={modes[m]} ({m})"
+            if pid == "master_tuning" and len(data) >= 2:
+                raw_t = data[0] * 128 + data[1]
+                hz = midix.master_tuning_hz_from_raw(raw_t)
+                cents = midix.master_tuning_cents_from_raw(raw_t)
+                cents = max(
+                    midix.MASTER_TUNING_MIN_CENTS,
+                    min(midix.MASTER_TUNING_MAX_CENTS, cents),
+                )
+                return f"master_tuning_cents={cents:.2f} ref_hz={hz:.1f}"
+            if pid == "metronome_volume":
+                return f"metronome_volume={data[0]}"
+            if pid == "metronome_tone":
+                t = max(0, min(3, data[0]))
+                tones = ("Click", "Electronic", "Voice-JP", "Voice-EN")
+                return f"metronome_tone={tones[t]} ({t})"
+            if pid == "metronome_beat":
+                return f"metronome_beat_index={data[0]}"
+            if pid == "metronome_pattern":
+                return f"metronome_pattern={data[0]}"
+            if pid == "split_point":
+                return f"split_point_midi={data[0]}"
+            if pid == "split_balance":
+                panel = midix.split_balance_panel_from_sysex_byte(data[0])
+                left, right = midix.split_balance_display_lr(panel)
+                return f"split_balance panel={panel} display={left}:{right} raw=0x{data[0]:02X}"
+            if pid == "dual_balance":
+                panel = midix.dual_balance_panel_from_sysex_byte(data[0])
+                left, right = midix.dual_balance_display_lr(panel)
+                return f"dual_balance panel={panel} display={left}:{right} raw=0x{data[0]:02X}"
+            if pid == "twin_piano_mode":
+                return f"twin_mode={data[0]} (0=Pair 1=Individual)"
+            if pid in ("tone_single", "tone_split_left", "tone_dual_layer") and len(data) >= 3:
+                tone = tone_from_dt1_bytes(data[0], data[1], data[2])
+                num = data[1] * 128 + data[2]
+                name = tone.name if tone else "?"
+                return f"category={data[0]} num={num} name={name}"
+        except (IndexError, ValueError, TypeError):
+            pass
+        return "raw=" + " ".join(f"{b:02X}" for b in data)
+
+    def _print_piano_value_trace(self, pid: str, data: tuple[int, ...]) -> None:
+        summary = self._piano_value_summary(pid, data)
+        print(f"MIDI [VALUES] {pid}: {summary}", file=sys.stderr, flush=True)
+
+    def _piano_values_read_finish_ok(self) -> None:
+        self._piano_values_read_timer.stop()
+        self._piano_values_read_active = False
+        self._piano_values_read_pending.clear()
+        print("=== Fin Read Piano Values ===\n", file=sys.stderr, flush=True)
+
+    def _piano_values_read_timeout(self) -> None:
+        if not self._piano_values_read_active:
+            return
+        for _addr, pid in self._piano_values_read_pending.items():
+            print(f"MIDI [VALUES] {pid}: (sin respuesta a tiempo)", file=sys.stderr, flush=True)
+        self._piano_values_read_pending.clear()
+        self._piano_values_read_active = False
+        print("=== Fin Read Piano Values (timeout) ===\n", file=sys.stderr, flush=True)
+
+    def _on_read_piano_values_clicked(self) -> None:
+        if not self._midi.is_open or not self._last_input_port:
+            QMessageBox.information(
+                self,
+                self._tr("dlg_midi"),
+                self._tr("err_read_piano_needs_sync"),
+            )
+            return
+        if self._piano_values_read_active:
+            return
+        specs = self._READ_PIANO_VALUE_SPECS
+        self._piano_values_read_pending = {addr: pid for pid, addr, _ in specs}
+        self._piano_values_read_active = True
+        self._piano_values_read_timer.stop()
+        self._piano_values_read_timer.start(4500)
+        print("\n=== Read Piano Values ===", file=sys.stderr, flush=True)
+        msgs = [factory() for _pid, _addr, factory in self._READ_PIANO_VALUE_SPECS]
+        try:
+            for m in msgs:
+                if not self._verbose:
+                    self._print_midi_trace("OUT", m)
+            self._midi.send_all_spaced(msgs, gap_s=0.05)
+        except OSError:
+            self._piano_values_read_timer.stop()
+            self._piano_values_read_active = False
+            self._piano_values_read_pending.clear()
+            self._disconnect_device(
+                status_key="status_device_lost",
+                name=self._last_output_port or "?",
+            )
+
     def _on_language_changed(self, index: int) -> None:
         if index < 0:
             return
@@ -516,12 +711,13 @@ class MainWindow(QMainWindow):
         self._update_connect_button_text()
         self._connect_help_btn.setText(self._tr("btn_connect_help"))
         self._connect_help_btn.setToolTip(self._tr("dlg_connect_help_title"))
+        self._read_piano_values_btn.setText(self._tr("btn_read_piano_values"))
+        self._read_piano_values_btn.setToolTip(self._tr("btn_read_piano_values_tip"))
         # Tab labels
         self._tab_widget.setTabText(0, self._tr("tab_piano_settings"))
         self._tab_widget.setTabText(1, self._tr("tab_tones"))
         self._tab_widget.setTabText(2, self._tr("tab_metronome"))
         self._tab_widget.setTabText(3, self._tr("tab_piano_designer"))
-        self._tab_widget.setTabText(4, self._tr("tab_individual_voicing"))
         # Piano Designer labels
         self._pd_label_lid.setText(self._tr("pd_label_lid"))
         self._pd_label_string_res.setText(self._tr("pd_label_string_resonance"))
@@ -530,8 +726,8 @@ class MainWindow(QMainWindow):
         self._pd_label_temperament.setText(self._tr("pd_label_temperament"))
         self._pd_label_temp_key.setText(self._tr("pd_label_temperament_key"))
         self._pd_save_btn.setText(self._tr("pd_btn_save"))
-        if hasattr(self, "_inv_hint_lbl"):
-            self._inv_hint_lbl.setText(self._tr("inv_hint"))
+        if hasattr(self, "_inv_note_combo"):
+            self._inv_section_title.setText(self._tr("pd_section_note_voicing"))
             self._inv_label_note.setText(self._tr("inv_label_note"))
             self._inv_label_tuning.setText(self._tr("pd_label_single_note_tuning"))
             self._inv_label_character.setText(self._tr("pd_label_single_note_character"))
@@ -547,7 +743,7 @@ class MainWindow(QMainWindow):
         self._key_touch_combo.blockSignals(True)
         current_kt = self._key_touch_combo.currentIndex()
         self._key_touch_combo.clear()
-        for key in ("key_touch_fix", "key_touch_light", "key_touch_medium", "key_touch_heavy"):
+        for key in _KEY_TOUCH_I18N_KEYS:
             self._key_touch_combo.addItem(self._tr(key))
         self._key_touch_combo.setCurrentIndex(max(0, current_kt))
         self._key_touch_combo.blockSignals(False)
@@ -845,10 +1041,19 @@ class MainWindow(QMainWindow):
         port_row.addWidget(self._port_combo, stretch=1)
         port_row.addWidget(self._refresh_btn)
         port_row.addWidget(self._connect_btn)
+        help_stack = QWidget()
+        help_stack_l = QVBoxLayout(help_stack)
+        help_stack_l.setContentsMargins(0, 0, 0, 0)
+        help_stack_l.setSpacing(4)
         self._connect_help_btn = QPushButton()
-        self._connect_help_btn.setMinimumWidth(72)
+        self._connect_help_btn.setMinimumWidth(140)
         self._connect_help_btn.clicked.connect(self._on_connect_help_clicked)
-        port_row.addWidget(self._connect_help_btn)
+        help_stack_l.addWidget(self._connect_help_btn)
+        self._read_piano_values_btn = QPushButton()
+        self._read_piano_values_btn.setMinimumWidth(140)
+        self._read_piano_values_btn.clicked.connect(self._on_read_piano_values_clicked)
+        help_stack_l.addWidget(self._read_piano_values_btn)
+        port_row.addWidget(help_stack)
         v.addLayout(port_row)
 
         lang_row = QHBoxLayout()
@@ -903,14 +1108,14 @@ class MainWindow(QMainWindow):
         v.addLayout(header)
 
         self._master_sld = QSlider(Qt.Orientation.Horizontal)
-        self._master_sld.setRange(0, 127)
+        self._master_sld.setRange(0, midix.MASTER_VOLUME_DT1_MAX)
         self._master_sld.setValue(DEFAULT_MASTER_VOLUME)
         self._master_sld.setTracking(True)
         self._master_sld.valueChanged.connect(lambda val: self._master_lbl.setText(str(val)))
         self._master_sld.valueChanged.connect(self._schedule_master_volume_debounced)
         self._master_sld.sliderReleased.connect(self._on_master_volume_slider_released)
         v.addWidget(self._master_sld)
-        v.addLayout(self._make_scale_row("0", None, "127"))
+        v.addLayout(self._make_scale_row("0", None, str(midix.MASTER_VOLUME_DT1_MAX)))
         v.addSpacing(8)
         v.addWidget(self._make_separator())
         return w
@@ -955,13 +1160,21 @@ class MainWindow(QMainWindow):
         v.addLayout(header)
 
         self._master_tuning_sld = QSlider(Qt.Orientation.Horizontal)
-        self._master_tuning_sld.setRange(-50, 50)
+        self._master_tuning_sld.setRange(
+            midix.MASTER_TUNING_SLIDER_MIN, midix.MASTER_TUNING_SLIDER_MAX
+        )
         self._master_tuning_sld.setValue(0)
         self._master_tuning_sld.setTracking(True)
         self._master_tuning_sld.valueChanged.connect(self._on_master_tuning_changed)
         self._master_tuning_sld.sliderReleased.connect(self._send_master_tuning)
         v.addWidget(self._master_tuning_sld)
-        v.addLayout(self._make_scale_row("-50¢", "440 Hz", "+50¢"))
+        v.addLayout(
+            self._make_scale_row(
+                f"{midix.MASTER_TUNING_MIN_HZ:.1f} Hz",
+                "440 Hz",
+                f"{midix.MASTER_TUNING_MAX_HZ:.1f} Hz",
+            )
+        )
         v.addSpacing(8)
         v.addWidget(self._make_separator())
         return w
@@ -1573,31 +1786,10 @@ class MainWindow(QMainWindow):
 
         v.addSpacing(10)
 
-        # Save to Piano button
-        self._pd_save_btn = QPushButton()
-        self._pd_save_btn.setMinimumHeight(34)
-        self._pd_save_btn.setStyleSheet(
-            "QPushButton { background-color: #E07828; color: #ffffff; "
-            "border: none; border-radius: 8px; font-size: 13px; font-weight: bold; }"
-            "QPushButton:hover { background-color: #f09040; }"
-            "QPushButton:pressed { background-color: #b05818; }"
-        )
-        self._pd_save_btn.clicked.connect(self._pd_save_to_piano)
-        v.addWidget(self._pd_save_btn)
-
-        v.addStretch(1)
-        return self._make_scroll_tab(inner)
-
-    def _build_individual_voicing_tab(self) -> QScrollArea:
-        inner = QWidget()
-        v = QVBoxLayout(inner)
-        v.setContentsMargins(12, 10, 12, 12)
-        v.setSpacing(8)
-
-        self._inv_hint_lbl = QLabel(self._tr("inv_hint"))
-        self._inv_hint_lbl.setWordWrap(True)
-        self._inv_hint_lbl.setObjectName("statusLabel")
-        v.addWidget(self._inv_hint_lbl)
+        # Voicing por nota (antes de Guardar)
+        self._inv_section_title = _section_header(self._tr("pd_section_note_voicing"))
+        v.addWidget(self._inv_section_title)
+        v.addWidget(self._make_separator())
 
         note_row = QHBoxLayout()
         self._inv_label_note = QLabel(self._tr("inv_label_note"))
@@ -1647,6 +1839,20 @@ class MainWindow(QMainWindow):
         self._inv_char_sld.valueChanged.connect(self._on_inv_character_changed)
         v.addWidget(self._inv_char_sld)
         v.addLayout(self._make_scale_row("−5", "0", "+5"))
+
+        v.addSpacing(10)
+
+        # Save to Piano button
+        self._pd_save_btn = QPushButton()
+        self._pd_save_btn.setMinimumHeight(34)
+        self._pd_save_btn.setStyleSheet(
+            "QPushButton { background-color: #E07828; color: #ffffff; "
+            "border: none; border-radius: 8px; font-size: 13px; font-weight: bold; }"
+            "QPushButton:hover { background-color: #f09040; }"
+            "QPushButton:pressed { background-color: #b05818; }"
+        )
+        self._pd_save_btn.clicked.connect(self._pd_save_to_piano)
+        v.addWidget(self._pd_save_btn)
 
         v.addStretch(1)
         return self._make_scroll_tab(inner)
@@ -1742,9 +1948,7 @@ class MainWindow(QMainWindow):
         self._pd_temp_key_combo.blockSignals(False)
 
     def _on_tab_clicked(self, index: int) -> None:
-        pd_index = 3
-        inv_index = 4
-        if index not in (pd_index, inv_index):
+        if index != 3:
             return
         if self._pd_warning_shown:
             return
@@ -1901,6 +2105,9 @@ class MainWindow(QMainWindow):
     def _disconnect_device(self, *, status_key: str, name: str | None = None) -> None:
         self._piano_poll_timer.stop()
         self._tone_refresh_after_mode_timer.stop()
+        self._piano_values_read_timer.stop()
+        self._piano_values_read_active = False
+        self._piano_values_read_pending.clear()
         self._cancel_debounce_timers()
         self._stop_midi_in_worker()
         try:
@@ -1933,6 +2140,7 @@ class MainWindow(QMainWindow):
             self._last_input_port = None
             self._set_status(self._tr("status_device_lost", name=lost_name))
             self._refresh_ports()
+            self._sync_connection_dependent_controls()
 
     def _on_midi_in_port_lost(self, _error: str) -> None:
         if not self._last_input_port:
@@ -1942,6 +2150,7 @@ class MainWindow(QMainWindow):
         self._last_input_port = None
         if self._last_output_port and self._midi.is_open:
             self._set_status(self._tr("status_device_lost", name=lost_name))
+        self._sync_connection_dependent_controls()
 
     def _refresh_ports(self) -> None:
         current = self._port_combo.currentText()
@@ -1958,9 +2167,17 @@ class MainWindow(QMainWindow):
             return
         if self._verbose:
             self._print_midi_trace("IN", msg)
+        dt1 = parse_roland_dt1(msg)
+        if self._piano_values_read_active and dt1 is not None:
+            addr, data = dt1
+            pending = self._piano_values_read_pending
+            if addr in pending:
+                pid = pending.pop(addr)
+                self._print_piano_value_trace(pid, data)
+                if not pending:
+                    self._piano_values_read_finish_ok()
         if time.monotonic() < self._ignore_piano_patch_until:
             return
-        dt1 = parse_roland_dt1(msg)
         if dt1 is not None:
             self._handle_dt1(*dt1)
             return
@@ -2030,6 +2247,8 @@ class MainWindow(QMainWindow):
             self._piano_poll_timer.start()
         else:
             self._set_status(self._tr("status_connected", name=name))
+        # Tras abrir (o fallar) la entrada MIDI: _last_input_port se rellena después del primer sync.
+        self._sync_connection_dependent_controls()
         if self._transpose_sld.value() != 0:
             self._send_transpose(update_status=False)
 
@@ -2287,12 +2506,13 @@ class MainWindow(QMainWindow):
         if addr == (0x01, 0x00, 0x02, 0x13) and data:
             if time.monotonic() - self._master_vol_sent_at < MASTER_VOL_IGNORE_DT1_S:
                 return
+            mv = max(0, min(midix.MASTER_VOLUME_DT1_MAX, int(data[0])))
             self._suppress_slider_midi = True
             try:
                 self._master_sld.blockSignals(True)
-                self._master_sld.setValue(data[0])
+                self._master_sld.setValue(mv)
                 self._master_sld.blockSignals(False)
-                self._master_lbl.setText(str(data[0]))
+                self._master_lbl.setText(str(mv))
             finally:
                 self._suppress_slider_midi = False
             return
@@ -2333,21 +2553,29 @@ class MainWindow(QMainWindow):
             return
         # Key Touch: 01 00 02 1D
         if addr == (0x01, 0x00, 0x02, 0x1D) and data:
-            idx = max(0, min(3, data[0]))
+            idx = max(0, min(5, data[0]))
             self._key_touch_combo.blockSignals(True)
             self._key_touch_combo.setCurrentIndex(idx)
             self._key_touch_combo.blockSignals(False)
             return
-        # Master Tuning: 01 00 02 18 — 2 bytes 7-bit, centrado en 8192 = 0 cents
+        # Master Tuning: 01 00 02 18 — 2 bytes 7-bit; Hz 415.3…466.2 vía escala log (ver messages).
         if addr == (0x01, 0x00, 0x02, 0x18) and len(data) >= 2:
             raw = data[0] * 128 + data[1]
-            cents = round((raw - 8192) * 50 / 8191)
-            cents = max(-50, min(50, cents))
-            hz = 440.0 * (2 ** (cents / 1200))
+            hz = midix.master_tuning_hz_from_raw(raw)
+            cents = midix.master_tuning_cents_from_raw(raw)
+            cents = max(
+                midix.MASTER_TUNING_MIN_CENTS,
+                min(midix.MASTER_TUNING_MAX_CENTS, cents),
+            )
+            tenths = int(round(cents * 10))
+            tenths = max(
+                midix.MASTER_TUNING_SLIDER_MIN,
+                min(midix.MASTER_TUNING_SLIDER_MAX, tenths),
+            )
             self._suppress_slider_midi = True
             try:
                 self._master_tuning_sld.blockSignals(True)
-                self._master_tuning_sld.setValue(cents)
+                self._master_tuning_sld.setValue(tenths)
                 self._master_tuning_sld.blockSignals(False)
                 self._master_tuning_hz_lbl.setText(f"{hz:.1f} Hz")
             finally:
@@ -2557,14 +2785,24 @@ class MainWindow(QMainWindow):
         except (ValueError, RuntimeError) as e:
             self._set_status(str(e))
 
-    def _on_master_tuning_changed(self, cents: int) -> None:
-        hz = 440.0 * (2 ** (cents / 1200))
+    def _on_master_tuning_changed(self, tenths: int) -> None:
+        c = max(
+            midix.MASTER_TUNING_MIN_CENTS,
+            min(midix.MASTER_TUNING_MAX_CENTS, tenths / 10.0),
+        )
+        hz_tgt = midix.MASTER_TUNING_REF_HZ * (2 ** (c / 1200))
+        hz_tgt = max(
+            midix.MASTER_TUNING_MIN_HZ,
+            min(midix.MASTER_TUNING_MAX_HZ, hz_tgt),
+        )
+        raw = midix.master_tuning_raw_from_hz(hz_tgt)
+        hz = midix.master_tuning_hz_from_raw(raw)
         self._master_tuning_hz_lbl.setText(f"{hz:.1f} Hz")
 
     def _send_master_tuning(self) -> None:
         if not self._midi.is_open:
             return
-        cents = float(self._master_tuning_sld.value())
+        cents = self._master_tuning_sld.value() / 10.0
         try:
             self._midi_user_send(midix.master_tuning_set(cents))
         except OSError:
@@ -2714,7 +2952,12 @@ class MainWindow(QMainWindow):
         if not self._midi.is_open:
             return
         try:
-            self._midi_user_send(midix.split_balance_set(value))
+            self._midi.send(midix.split_balance_set(value))
+            self._midi.send_all_spaced(
+                midix.split_balance_control_changes(value),
+                gap_s=midix.DEFAULT_MESSAGE_GAP_S,
+            )
+            self._suppress_piano_state_poll_after_user_change()
         except OSError:
             self._disconnect_device(
                 status_key="status_device_lost", name=self._last_output_port or "?"

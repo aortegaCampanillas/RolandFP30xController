@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import math
+
 import mido
 
 ROLAND_ID = 0x41
@@ -25,6 +27,10 @@ DEFAULT_MESSAGE_GAP_S = 0.02
 # valor centrado en 64, no 0..18 crudo.
 MIDI_DUAL_MAIN_VOLUME_CH = 4
 MIDI_DUAL_LAYER_VOLUME_CH = 2
+# Split: mano derecha como parte principal (mismo canal que tono vía CC0/32/PC); mano izquierda
+# como segunda parte (mismo canal que la capa Dual en este proyecto).
+MIDI_SPLIT_RIGHT_VOLUME_CH = MIDI_DUAL_MAIN_VOLUME_CH
+MIDI_SPLIT_LEFT_VOLUME_CH = MIDI_DUAL_LAYER_VOLUME_CH
 # Tiempo extra tras Program Change antes del Note On de enganche (procesamiento interno).
 POST_PROGRAM_CHANGE_LATCH_DELAY_S = 0.08
 
@@ -235,16 +241,20 @@ def metronome_read_tempo() -> mido.Message:
     return roland_data_request_1((0x01, 0x00, 0x01, 0x08), (0x00, 0x00, 0x00, 0x02))
 
 
-def master_volume_set(value_0_127: int) -> mido.Message:
+# DT1 `masterVolume` en FP-30X: rango útil del panel 0..100 (no 0..127).
+MASTER_VOLUME_DT1_MAX = 100
+
+
+def master_volume_set(value: int) -> mido.Message:
     """Establece el master volume vía DT1 (01 00 02 13). Actualiza las luces del panel del FP-30X."""
-    if not 0 <= value_0_127 <= 127:
-        msg = "Master Volume debe estar entre 0 y 127"
+    if not 0 <= value <= MASTER_VOLUME_DT1_MAX:
+        msg = f"Master Volume debe estar entre 0 y {MASTER_VOLUME_DT1_MAX}"
         raise ValueError(msg)
-    return roland_data_set_1((0x01, 0x00, 0x02, 0x13), (value_0_127,))
+    return roland_data_set_1((0x01, 0x00, 0x02, 0x13), (value,))
 
 
 def master_volume_read() -> mido.Message:
-    """Solicita el master volume del piano (RQ1). Respuesta en 01 00 02 13, 1 byte, 0–127."""
+    """Solicita el master volume del piano (RQ1). Respuesta en 01 00 02 13, 1 byte (panel 0..100)."""
     return roland_data_request_1((0x01, 0x00, 0x02, 0x13), (0x00, 0x00, 0x00, 0x01))
 
 
@@ -328,13 +338,13 @@ def split_balance_display_lr(panel_value_0_18: int) -> tuple[int, int]:
 
 
 def split_balance_sysex_byte(value: int) -> int:
-    """Índice de panel 0..18 (9=centro) al byte DT1 del FP-30X: mismo eje que dualBalance (`64 + (v−9)×3`)."""
+    """Índice de panel 0..18 (9=centro) al byte DT1 del FP-30X: `64 + (v−9)×3`."""
     v = max(0, min(18, int(value)))
     return max(0, min(127, 64 + (v - 9) * 3))
 
 
 def split_balance_panel_from_sysex_byte(raw: int) -> int:
-    """Invierte el byte devuelto por RQ1/DT1 al índice de panel 0..18."""
+    """Invierte el byte RQ1/DT1 al índice de panel 0..18."""
     if 0 <= raw <= 18:
         return max(0, min(18, raw))
     v = int(round((raw - 64) / 3 + 9))
@@ -352,8 +362,20 @@ def dual_balance_display_lr(panel_value_6_11: int) -> tuple[int, int]:
 
 
 def split_balance_set(value: int) -> mido.Message:
-    """Balance Split (01 00 02 03). Panel 0..18 (9=centro); el FP-30X usa byte DT1 centrado en 64."""
+    """Balance Split (01 00 02 03). Panel 0..18 (9=centro); byte DT1 centrado en 64."""
     return roland_data_set_1((0x01, 0x00, 0x02, 0x03), (split_balance_sysex_byte(value),))
+
+
+def split_balance_control_changes(value: int) -> list[mido.Message]:
+    """CC7 en mano izquierda y derecha (canales 2 y 4): refuerzo audible en todo el rango, como en Dual."""
+    b = split_balance_sysex_byte(value)
+    d = b - 64
+    left = max(1, min(127, 100 - d))
+    right = max(1, min(127, 100 + d))
+    return [
+        control_change(MIDI_SPLIT_LEFT_VOLUME_CH, 7, left),
+        control_change(MIDI_SPLIT_RIGHT_VOLUME_CH, 7, right),
+    ]
 
 
 def split_balance_read() -> mido.Message:
@@ -468,18 +490,63 @@ def metronome_pattern_read() -> mido.Message:
     return roland_data_request_1((0x01, 0x00, 0x02, 0x20), (0x00, 0x00, 0x00, 0x01))
 
 
-def master_tuning_set(cents_offset: float) -> mido.Message:
-    """Establece el master tuning (01 00 02 18). cents_offset: -50.0..+50.0.
+# Master tuning FP-30X: rango de referencia A4 según panel (~415.3 Hz … 466.2 Hz).
+MASTER_TUNING_REF_HZ = 440.0
+MASTER_TUNING_MIN_HZ = 415.3
+MASTER_TUNING_MAX_HZ = 466.2
+MASTER_TUNING_MIN_CENTS = 1200.0 * math.log2(MASTER_TUNING_MIN_HZ / MASTER_TUNING_REF_HZ)
+MASTER_TUNING_MAX_CENTS = 1200.0 * math.log2(MASTER_TUNING_MAX_HZ / MASTER_TUNING_REF_HZ)
+# Slider en décimas de cent (entero) para paso fino en la UI.
+MASTER_TUNING_SLIDER_MIN = math.ceil(MASTER_TUNING_MIN_CENTS * 10)
+MASTER_TUNING_SLIDER_MAX = math.ceil(MASTER_TUNING_MAX_CENTS * 10)
 
-    Encoding: 14-bit centrado en 8192 (= 440 Hz).
-    value = 8192 + round(cents_offset * 8191 / 50)
-    Dividido en 2 bytes de 7 bits: [value // 128, value % 128].
+
+def master_tuning_raw_from_hz(hz: float) -> int:
+    """Convierte Hz del panel (415.3…466.2) al valor 14-bit del SysEx (0…16383).
+
+    El FP-30X interpola en escala logarítmica entre los extremos del panel (comportamiento
+    observado frente a un mapeo lineal en cents alrededor de 8192, que desincronizaba
+    envío, eco DT1 y la etiqueta en Hz).
     """
-    if not -50.0 <= cents_offset <= 50.0:
-        msg = "Master tuning offset debe estar entre -50 y +50 cents"
-        raise ValueError(msg)
-    raw = 8192 + round(cents_offset * 8191 / 50)
-    raw = max(0, min(16383, raw))
+    h = max(MASTER_TUNING_MIN_HZ, min(MASTER_TUNING_MAX_HZ, float(hz)))
+    ratio_top = math.log2(h / MASTER_TUNING_MIN_HZ)
+    ratio_full = math.log2(MASTER_TUNING_MAX_HZ / MASTER_TUNING_MIN_HZ)
+    t = ratio_top / ratio_full
+    return int(round(t * 16383))
+
+
+def master_tuning_hz_from_raw(raw: int) -> float:
+    """Decodifica el valor 14-bit entrante a Hz (misma escala log que `master_tuning_raw_from_hz`)."""
+    r = max(0, min(16383, int(raw)))
+    if r <= 0:
+        return MASTER_TUNING_MIN_HZ
+    if r >= 16383:
+        return MASTER_TUNING_MAX_HZ
+    t = r / 16383
+    return float(MASTER_TUNING_MIN_HZ * ((MASTER_TUNING_MAX_HZ / MASTER_TUNING_MIN_HZ) ** t))
+
+
+def master_tuning_cents_from_raw(raw: int) -> float:
+    """Cents relativos a La 440 a partir del raw 14-bit (coherente con Hz geométrico)."""
+    hz = master_tuning_hz_from_raw(raw)
+    return 1200.0 * math.log2(hz / MASTER_TUNING_REF_HZ)
+
+
+def master_tuning_set(cents_offset: float) -> mido.Message:
+    """Establece el master tuning (01 00 02 18).
+
+    Rango útil ~415.3 Hz … 466.2 Hz respecto a La4=440 Hz (cents fuera se recortan).
+
+    El raw 0…16383 sigue la escala log en Hz entre ``MASTER_TUNING_MIN_HZ`` y
+    ``MASTER_TUNING_MAX_HZ`` (2 bytes 7-bit, MSB primero).
+    """
+    c = max(
+        MASTER_TUNING_MIN_CENTS,
+        min(MASTER_TUNING_MAX_CENTS, float(cents_offset)),
+    )
+    hz = MASTER_TUNING_REF_HZ * (2 ** (c / 1200))
+    hz = max(MASTER_TUNING_MIN_HZ, min(MASTER_TUNING_MAX_HZ, hz))
+    raw = master_tuning_raw_from_hz(hz)
     return roland_data_set_1((0x01, 0x00, 0x02, 0x18), (raw // 128, raw % 128))
 
 
@@ -488,12 +555,16 @@ def master_tuning_read() -> mido.Message:
     return roland_data_request_1((0x01, 0x00, 0x02, 0x18), (0x00, 0x00, 0x00, 0x02))
 
 
-def key_touch_set(value_0_3: int) -> mido.Message:
-    """Establece la sensibilidad del teclado (01 00 02 1D). 0=Fix 1=Light 2=Medium 3=Heavy."""
-    if not 0 <= value_0_3 <= 3:
-        msg = "Key Touch debe estar entre 0 y 3"
+def key_touch_set(value_0_5: int) -> mido.Message:
+    """Establece la sensibilidad del teclado (01 00 02 1D).
+
+    Orden como en Roland Piano App (captura Key Touch): 0 Fix, 1 Super Light, 2 Light,
+    3 Medium, 4 Heavy, 5 Super Heavy.
+    """
+    if not 0 <= value_0_5 <= 5:
+        msg = "Key Touch debe estar entre 0 y 5"
         raise ValueError(msg)
-    return roland_data_set_1((0x01, 0x00, 0x02, 0x1D), (value_0_3,))
+    return roland_data_set_1((0x01, 0x00, 0x02, 0x1D), (value_0_5,))
 
 
 def key_touch_read() -> mido.Message:

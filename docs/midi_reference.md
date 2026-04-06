@@ -71,14 +71,14 @@ requieren codificación multi-byte. La columna **Dir.** indica sentido: R=leer, 
 | `toneForSplit`        | `01 00 02 0A`   | 3     | R/W  | Ídem |
 | `toneForDual`         | `01 00 02 0D`   | 3     | R/W  | Ídem |
 | `songNumber`          | `01 00 02 10`   | 3     | R/W  | `[category, num//128, num%128]` |
-| `masterVolume`        | `01 00 02 13`   | 1     | R/W  | 0–127. **Usar este para controlar el volumen** — actualiza las luces del panel. El Universal Realtime Master Volume (§4.1) NO mueve las luces. |
+| `masterVolume`        | `01 00 02 13`   | 1     | R/W  | 0–100 en FP-30X (panel). **Usar este para controlar el volumen** — actualiza las luces del panel. El Universal Realtime Master Volume (§4.1) NO mueve las luces. |
 | `masterVolumeLimit`   | `01 00 02 14`   | 1     | R/W  | |
 | `allSongPlayMode`     | `01 00 02 15`   | 1     | R/W  | |
-| `masterTuning`        | `01 00 02 18`   | 2     | R/W  | Fine tuning, 7-bit ×2 |
+| `masterTuning`        | `01 00 02 18`   | 2     | R/W  | Afinación maestra: raw 0…16383 ↔ ~415.3–466.2 Hz en escala **log** (ver código; La4≈440 Hz) |
 | `ambience`            | `01 00 02 1A`   | 1     | R/W  | Nivel de ambiente 0–… |
 | `headphones3DAmbience` | `01 00 02 1B`  | 1     | R/W  | |
 | `brilliance`          | `01 00 02 1C`   | 1     | R/W  | Brillo del sonido |
-| `keyTouch`            | `01 00 02 1D`   | 1     | R/W  | Sensibilidad del teclado (ver §5.1) |
+| `keyTouch`            | `01 00 02 1D`   | 1     | R/W  | Sensibilidad discreta 0–5 (ver §5.1; app Roland) |
 | `transposeMode`       | `01 00 02 1E`   | 1     | R/W  | KeyboardAndSong(0) Keyboard(1) Song(2) |
 | `metronomeBeat`       | `01 00 02 1F`   | 1     | R/W  | Compás del metrónomo (ver §4.3) |
 | `metronomePattern`    | `01 00 02 20`   | 1     | R/W  | Patrón 0–7 |
@@ -205,14 +205,17 @@ F0 7F 7F 04 05 01 01 01 01 01 <pp> <vv> F7
 
 ### 5.1 Key Touch (`01 00 02 1D`)
 
-FP-30X usa `keyTouchTypeValue=0` (continuo 0–100) o `keyTouchTypeValue=2` (discreto):
+FP-30X usa `keyTouchTypeValue=0` (continuo 0–100) o `keyTouchTypeValue=2` (discreto).
+Orden de la app Roland Piano App (captura Key Touch, `31 key tuch.png`):
 
 | Valor | Nombre (type=2) |
 |-------|-----------------|
 | 0     | Fix (fuerza constante) |
-| 1     | Light |
-| 2     | Medium |
-| 3     | Heavy |
+| 1     | Super Light |
+| 2     | Light |
+| 3     | Medium |
+| 4     | Heavy |
+| 5     | Super Heavy |
 
 ### 5.2 Metronome Beat (`01 00 02 1F`) — FP-30X usa type=0
 
@@ -325,7 +328,7 @@ metronome_read_status() # RQ1 → 01 00 01 0F, 1 byte  → actualiza etiqueta ON
 ```
 
 **Decodificación de las respuestas:**
-- `masterVolume` (01 00 02 13): `data[0]` directo, 0–127
+- `masterVolume` (01 00 02 13): `data[0]` directo, 0–100 en panel FP-30X
 - `sequencerTempoRO` (01 00 01 08): `bpm = data[0] * 128 + data[1]`, rango 20–250
 - `metronomeStatus` (01 00 01 0F): `on = bool(data[0])`
 

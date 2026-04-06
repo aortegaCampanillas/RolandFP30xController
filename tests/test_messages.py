@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import mido
+import pytest
 
 from roland_fp30x_controller.midi import messages as midix
 from roland_fp30x_controller.midi.rpn_parser import RpnParser, parse_master_coarse_tuning_sysex
@@ -36,6 +37,98 @@ def test_master_volume_sysex() -> None:
     assert m.type == "sysex"
     ref = mido.Message.from_bytes([0xF0, 0x7F, 0x7F, 0x04, 0x01, 0x00, 0x64, 0xF7])
     assert m.bin() == ref.bin()
+
+
+def test_master_volume_dt1_set_max_100() -> None:
+    m = midix.master_volume_set(100)
+    assert m.type == "sysex"
+    assert list(m.bytes()) == [
+        0xF0,
+        0x41,
+        0x10,
+        0x00,
+        0x00,
+        0x00,
+        0x28,
+        0x12,
+        0x01,
+        0x00,
+        0x02,
+        0x13,
+        0x64,
+        0x06,
+        0xF7,
+    ]
+
+
+def test_master_volume_dt1_set_rejects_over_max() -> None:
+    with pytest.raises(ValueError, match="100"):
+        midix.master_volume_set(101)
+
+
+def test_key_touch_set_super_heavy_sysex() -> None:
+    m = midix.key_touch_set(5)
+    assert m.type == "sysex"
+    assert list(m.bytes()) == [
+        0xF0,
+        0x41,
+        0x10,
+        0x00,
+        0x00,
+        0x00,
+        0x28,
+        0x12,
+        0x01,
+        0x00,
+        0x02,
+        0x1D,
+        0x05,
+        0x5B,
+        0xF7,
+    ]
+
+
+def test_key_touch_set_rejects_over_max() -> None:
+    with pytest.raises(ValueError, match="5"):
+        midix.key_touch_set(6)
+
+
+def test_master_tuning_set_center_sysex() -> None:
+    m = midix.master_tuning_set(0.0)
+    assert m.type == "sysex"
+    assert list(m.bytes()) == [
+        0xF0,
+        0x41,
+        0x10,
+        0x00,
+        0x00,
+        0x00,
+        0x28,
+        0x12,
+        0x01,
+        0x00,
+        0x02,
+        0x18,
+        0x3F,
+        0x7B,
+        0x2B,
+        0xF7,
+    ]
+
+
+def test_master_tuning_geometric_endpoints() -> None:
+    assert midix.master_tuning_hz_from_raw(0) == midix.MASTER_TUNING_MIN_HZ
+    assert midix.master_tuning_hz_from_raw(16383) == midix.MASTER_TUNING_MAX_HZ
+    assert midix.master_tuning_raw_from_hz(midix.MASTER_TUNING_MIN_HZ) == 0
+    assert midix.master_tuning_raw_from_hz(midix.MASTER_TUNING_MAX_HZ) == 16383
+    hz440 = midix.master_tuning_hz_from_raw(midix.master_tuning_raw_from_hz(440.0))
+    assert abs(hz440 - 440.0) < 0.02
+
+
+def test_master_tuning_set_clamps_high_to_max_raw() -> None:
+    m_hi = midix.master_tuning_set(midix.MASTER_TUNING_MAX_CENTS)
+    m_clamp = midix.master_tuning_set(500.0)
+    assert list(m_hi.bytes()) == list(m_clamp.bytes())
 
 
 def test_bank_program_order() -> None:
@@ -106,6 +199,13 @@ def test_split_balance_fp30x_sysex_roundtrip() -> None:
     for v in range(19):
         b = midix.split_balance_sysex_byte(v)
         assert midix.split_balance_panel_from_sysex_byte(b) == v
+
+
+def test_split_balance_control_changes_symmetric_at_center() -> None:
+    msgs = midix.split_balance_control_changes(9)
+    assert len(msgs) == 2
+    assert all(m.type == "control_change" for m in msgs)
+    assert msgs[0].value == msgs[1].value == 100
 
 
 def test_split_balance_display_lr_endpoints() -> None:
