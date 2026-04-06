@@ -34,10 +34,9 @@ MIDI_SPLIT_LEFT_VOLUME_CH = MIDI_DUAL_LAYER_VOLUME_CH
 # Tiempo extra tras Program Change antes del Note On de enganche (procesamiento interno).
 POST_PROGRAM_CHANGE_LATCH_DELAY_S = 0.08
 
-# Balance Dual (escala de panel con 9=centro): el FP-30X no aplica 0..18 completo;
-# fuera de ~6..11 satura. La etiqueta L:R en UI usa split_balance_display_lr / dual_balance_display_lr.
-DUAL_BALANCE_PANEL_MIN = 6
-DUAL_BALANCE_PANEL_MAX = 11
+# Balance Dual (escala de panel con 9=centro). La UI usa el mismo eje visual 0..18 que Split.
+DUAL_BALANCE_PANEL_MIN = 0
+DUAL_BALANCE_PANEL_MAX = 18
 
 
 def bank_select_and_program_change(
@@ -361,14 +360,10 @@ def split_balance_panel_from_sysex_byte(raw: int) -> int:
     return max(0, min(18, v))
 
 
-def dual_balance_display_lr(panel_value_6_11: int) -> tuple[int, int]:
-    """Misma convención visual que Split; panel Dual del FP-30X solo usa 6..11."""
-    v = max(DUAL_BALANCE_PANEL_MIN, min(DUAL_BALANCE_PANEL_MAX, int(panel_value_6_11)))
-    if v <= 9:
-        full = (v - DUAL_BALANCE_PANEL_MIN) * 3
-    else:
-        full = int(round(9 + (v - 9) * 4.5))
-    return split_balance_display_lr(full)
+def dual_balance_display_lr(panel_value_0_18: int) -> tuple[int, int]:
+    """Misma convención visual que Split en el eje completo 0..18."""
+    v = max(DUAL_BALANCE_PANEL_MIN, min(DUAL_BALANCE_PANEL_MAX, int(panel_value_0_18)))
+    return split_balance_display_lr(v)
 
 
 def split_balance_set(value: int) -> mido.Message:
@@ -393,16 +388,13 @@ def split_balance_read() -> mido.Message:
 
 
 def dual_balance_sysex_byte(value: int) -> int:
-    """Codifica la posición de panel (9=centro) al byte DT1 centrado en 64.
-
-    El hardware solo acepta un subconjunto; se recorta a DUAL_BALANCE_PANEL_MIN/MAX.
-    """
+    """Codifica la posición de panel (9=centro) al byte DT1 centrado en 64."""
     v = max(DUAL_BALANCE_PANEL_MIN, min(DUAL_BALANCE_PANEL_MAX, int(value)))
     return max(0, min(127, 64 + (v - 9) * 3))
 
 
 def dual_balance_panel_from_sysex_byte(raw: int) -> int:
-    """Invierte el byte devuelto por RQ1/DT1 al índice de panel, acotado al rango real."""
+    """Invierte el byte devuelto por RQ1/DT1 al índice de panel 0..18."""
     if raw <= 18:
         v = raw
     else:
@@ -411,7 +403,7 @@ def dual_balance_panel_from_sysex_byte(raw: int) -> int:
 
 
 def dual_balance_set(value: int) -> mido.Message:
-    """Balance Dual en 01 00 02 05 (byte centrado en 64). FP-30X: panel útil ~6..11 (9=centro)."""
+    """Balance Dual en 01 00 02 05 (byte centrado en 64; panel 0..18 con 9=centro)."""
     return roland_data_set_1((0x01, 0x00, 0x02, 0x05), (dual_balance_sysex_byte(value),))
 
 
