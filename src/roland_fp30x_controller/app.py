@@ -2,7 +2,11 @@ from __future__ import annotations
 
 import argparse
 import sys
+from pathlib import Path
 
+from PySide6.QtCore import QBuffer, QByteArray, QIODevice, Qt
+from PySide6.QtGui import QIcon, QImage, QPainter
+from PySide6.QtSvg import QSvgRenderer
 from PySide6.QtWidgets import QApplication
 
 import roland_fp30x_controller.midi  # noqa: F401 — exporta API MIDI pública
@@ -11,7 +15,7 @@ from roland_fp30x_controller.ui.main_window import MainWindow
 DARK_STYLE = """
 QMainWindow { background-color: #1a1a1e; }
 
-QWidget { background-color: #1a1a1e; color: #e0e0e0; font-size: 14px; }
+QWidget { background-color: #1a1a1e; color: #e0e0e0; font-size: 13px; }
 
 QScrollArea { border: none; background-color: #1a1a1e; }
 QScrollArea > QWidget > QWidget { background-color: #1a1a1e; }
@@ -21,8 +25,8 @@ QTabBar { background-color: transparent; qproperty-drawBase: 0; }
 QTabBar::tab {
     background-color: transparent;
     color: #888888;
-    padding: 10px 24px;
-    font-size: 15px;
+    padding: 6px 14px;
+    font-size: 13px;
     border: none;
     border-bottom: 2px solid transparent;
 }
@@ -48,36 +52,110 @@ QSlider:disabled::sub-page:horizontal { background: #444444; }
 
 QPushButton {
     background-color: #2c2c2e; color: #e0e0e0;
-    border: 1px solid #484848; border-radius: 8px;
-    padding: 8px 18px; font-size: 14px; min-height: 32px;
+    border: 1px solid #484848; border-radius: 6px;
+    padding: 3px 10px; font-size: 13px; min-height: 22px;
 }
 QPushButton:hover { background-color: #3a3a3c; border-color: #5a5a5a; }
 QPushButton:pressed { background-color: #1c1c1e; }
 QPushButton:disabled { color: #555555; background-color: #252527; border-color: #333333; }
 
-QComboBox {
-    background-color: #2c2c2e; color: #e0e0e0;
-    border: 1px solid #484848; border-radius: 8px;
-    padding: 6px 12px 6px 14px; font-size: 14px; min-height: 32px;
+/* Botones +/- compactos (split point, tono): padding 0 para el glifo */
+QPushButton#stepperButton {
+    padding: 2px 2px;
+    min-width: 28px;
+    max-width: 36px;
+    min-height: 22px;
+    font-size: 15px;
+    font-weight: bold;
 }
-QComboBox:hover { border-color: #5a5a5a; }
+
+QComboBox {
+    background-color: #2c2c2e;
+    color: #e0e0e0;
+    border: 1px solid #484848;
+    border-radius: 6px;
+    padding: 2px 8px 2px 8px;
+    padding-right: 26px;
+    font-size: 13px;
+    min-height: 22px;
+    combobox-popup: 0;
+}
+QComboBox:hover:!disabled { border-color: #5a5a5a; }
+QComboBox:focus { border-color: #E07828; }
+QComboBox:on { border-color: #E07828; }
+QComboBox:disabled {
+    color: #666666;
+    background-color: #252527;
+    border-color: #333333;
+}
+/* Zona de la flecha: sin línea ni recuadro; mismo fondo que el combo */
 QComboBox::drop-down {
     subcontrol-origin: padding;
     subcontrol-position: center right;
-    width: 28px;
+    width: 22px;
     border: none;
-    border-left: 1px solid #484848;
-    border-top-right-radius: 8px;
-    border-bottom-right-radius: 8px;
+    background: transparent;
 }
+QComboBox:disabled::drop-down {
+    background: transparent;
+}
+/* Flecha tipo caret (∨) dibujada con bordes */
 QComboBox::down-arrow {
-    width: 10px; height: 10px;
+    width: 0;
+    height: 0;
+    border-left: 4px solid transparent;
+    border-right: 4px solid transparent;
+    border-top: 5px solid #a8a8a8;
+    margin-right: 7px;
+}
+QComboBox:hover:!disabled::down-arrow { border-top-color: #e0e0e0; }
+QComboBox:on::down-arrow { border-top-color: #E07828; }
+QComboBox:disabled::down-arrow {
+    border-top-color: #555555;
+    border-left-color: transparent;
+    border-right-color: transparent;
 }
 QComboBox QAbstractItemView {
-    background-color: #2c2c2e; color: #e0e0e0;
-    selection-background-color: #E07828; selection-color: #ffffff;
-    border: 1px solid #484848; border-radius: 8px; outline: none;
+    background-color: #2c2c2e;
+    color: #e0e0e0;
+    selection-background-color: #E07828;
+    selection-color: #ffffff;
+    border: 1px solid #484848;
+    border-radius: 8px;
+    outline: none;
     padding: 4px;
+}
+QComboBox QAbstractItemView::item {
+    min-height: 20px;
+    padding: 2px 8px;
+    border-radius: 4px;
+}
+QComboBox QAbstractItemView::item:hover {
+    background-color: #3a3a3c;
+}
+QComboBox QAbstractItemView::item:selected {
+    background-color: #E07828;
+    color: #ffffff;
+}
+QComboBox QAbstractItemView QScrollBar:vertical {
+    width: 10px;
+    background: #252527;
+    border: none;
+    border-radius: 4px;
+    margin: 2px;
+}
+QComboBox QAbstractItemView QScrollBar::handle:vertical {
+    background: #484848;
+    border-radius: 4px;
+    min-height: 24px;
+}
+QComboBox QAbstractItemView QScrollBar::handle:vertical:hover {
+    background: #5a5a5a;
+}
+QComboBox QAbstractItemView QScrollBar::add-line:vertical,
+QComboBox QAbstractItemView QScrollBar::sub-line:vertical {
+    height: 0;
+    subcontrol-origin: margin;
 }
 
 QLabel { color: #e0e0e0; background-color: transparent; }
@@ -100,6 +178,54 @@ QGroupBox::title { subcontrol-origin: margin; left: 0; color: #666666; }
 QMessageBox { background-color: #2c2c2e; }
 QMessageBox QLabel { color: #e0e0e0; }
 """
+
+
+def _application_icon() -> QIcon:
+    """Icono propio (SVG en paquete); sin marca ni diseño de producto Roland."""
+    path = Path(__file__).resolve().parent / "resources" / "app_icon.svg"
+    if path.is_file():
+        return QIcon(str(path))
+    return QIcon()
+
+
+def _app_icon_svg_path() -> Path:
+    return Path(__file__).resolve().parent / "resources" / "app_icon.svg"
+
+
+def _raster_app_icon_svg_to_png_bytes(svg_path: Path, size: int = 512) -> bytes | None:
+    """Rasteriza el SVG a PNG en memoria (para NSImage en macOS). Requiere QApplication viva."""
+    renderer = QSvgRenderer(str(svg_path))
+    if not renderer.isValid():
+        return None
+    img = QImage(size, size, QImage.Format.Format_ARGB32)
+    img.fill(Qt.GlobalColor.transparent)
+    painter = QPainter(img)
+    renderer.render(painter)
+    painter.end()
+    ba = QByteArray()
+    buf = QBuffer(ba)
+    buf.open(QIODevice.OpenModeFlag.WriteOnly)
+    if not img.save(buf, "PNG"):
+        return None
+    buf.close()
+    return bytes(ba)
+
+
+def _set_macos_process_icon_from_png(png_bytes: bytes) -> None:
+    """Dock y conmutador de apps (p. ej. Cmd+Tab): macOS usa el binario del proceso (Python),
+    no `QApplication.setWindowIcon`. Se asigna vía AppKit cuando PyObjC está disponible."""
+    if sys.platform != "darwin":
+        return
+    try:
+        from AppKit import NSApplication, NSImage
+        from Foundation import NSData
+    except ImportError:
+        return
+    data = NSData.dataWithBytes_length_(png_bytes, len(png_bytes))
+    image = NSImage.alloc().initWithData_(data)
+    if image is None:
+        return
+    NSApplication.sharedApplication().setApplicationIconImage_(image)
 
 
 def run(argv: list[str] | None = None) -> int:
@@ -126,6 +252,16 @@ def run(argv: list[str] | None = None) -> int:
     args, qt_argv = parser.parse_known_args(filtered)
     verbose = args.verbose or verbose_slash
     app = QApplication([sys.argv[0], *qt_argv])
+    app.setWindowIcon(_application_icon())
+    if sys.platform == "darwin":
+        svg = _app_icon_svg_path()
+        if svg.is_file():
+            png = _raster_app_icon_svg_to_png_bytes(svg)
+            if png:
+                _set_macos_process_icon_from_png(png)
+    # Fusion hace que QSS se aplique al QComboBox completo. Con el estilo nativo de macOS,
+    # Qt mezcla widgets nativos y el stylesheet: línea divisoria y “rectángulo” en vez de flecha.
+    app.setStyle("Fusion")
     app.setStyleSheet(DARK_STYLE)
     window = MainWindow(verbose=verbose)
     window.show()

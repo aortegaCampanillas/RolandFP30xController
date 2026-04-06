@@ -29,9 +29,15 @@ class MidiOutClient:
         self._port = mido.open_output(port_name)
 
     def close(self) -> None:
-        if self._port is not None:
-            self._port.close()
-            self._port = None
+        if self._port is None:
+            return
+        port = self._port
+        self._port = None
+        try:
+            port.close()
+        except OSError:
+            # Puerto ya inválido (cable USB, sleep, etc.): igualmente dejamos de usarlo.
+            pass
 
     def send(self, message: mido.Message) -> None:
         if self._port is None:

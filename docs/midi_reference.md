@@ -64,8 +64,8 @@ requieren codificación multi-byte. La columna **Dir.** indica sentido: R=leer, 
 | `splitPoint`          | `01 00 02 01`   | 1     | R/W  | Nota MIDI del punto de split |
 | `splitOctaveShift`    | `01 00 02 02`   | 1     | R/W  | |
 | `splitBalance`        | `01 00 02 03`   | 1     | R/W  | |
-| `dualOctaveShift`     | `01 00 02 04`   | 1     | R/W  | |
-| `dualBalance`         | `01 00 02 05`   | 1     | R/W  | |
+| `dualOctaveShift`     | `01 00 02 04`   | 1     | R/W  | Encoding: octava+64 |
+| `dualBalance`         | `01 00 02 05`   | 1     | R/W  | En FP-30X el byte suele ir **centrado en 64** (`64 + (panel−9)×3` para 0..18). Además el manual indica CC7 por parte (canales 4 + capa). |
 | `twinPianoMode`       | `01 00 02 06`   | 1     | R/W  | |
 | `toneForSingle`       | `01 00 02 07`   | 3     | R/W  | `[category, num//128, num%128]` |
 | `toneForSplit`        | `01 00 02 0A`   | 3     | R/W  | Ídem |

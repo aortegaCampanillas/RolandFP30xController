@@ -18,8 +18,20 @@ def channel_zero(channel_1_16: int) -> int:
 
 # Pausa breve entre mensajes: evita que el FP-30X agrupe mal CC0/CC32/PC en algunos drivers.
 DEFAULT_MESSAGE_GAP_S = 0.02
+
+# Dual: el manual indica que CC7 ajusta el volumen por «Part». El teclado principal
+# usa el canal 4 (véase soporte Roland / DAW). La segunda capa en Dual suele seguir
+# otra parte MIDI en pianos Roland compactos; el SysEx 01 00 02 05 a veces espera
+# valor centrado en 64, no 0..18 crudo.
+MIDI_DUAL_MAIN_VOLUME_CH = 4
+MIDI_DUAL_LAYER_VOLUME_CH = 2
 # Tiempo extra tras Program Change antes del Note On de enganche (procesamiento interno).
 POST_PROGRAM_CHANGE_LATCH_DELAY_S = 0.08
+
+# Balance Dual (escala de panel con 9=centro): el FP-30X no aplica 0..18 completo;
+# fuera de ~6..11 satura. La etiqueta L:R en UI usa split_balance_display_lr / dual_balance_display_lr.
+DUAL_BALANCE_PANEL_MIN = 6
+DUAL_BALANCE_PANEL_MAX = 11
 
 
 def bank_select_and_program_change(
@@ -280,6 +292,18 @@ def tone_for_dual_set(category_idx: int, num: int) -> mido.Message:
     return roland_data_set_1((0x01, 0x00, 0x02, 0x0D), (category_idx, num // 128, num % 128))
 
 
+def tone_for_single_read() -> mido.Message:
+    return roland_data_request_1((0x01, 0x00, 0x02, 0x07), (0x00, 0x00, 0x00, 0x03))
+
+
+def tone_for_split_read() -> mido.Message:
+    return roland_data_request_1((0x01, 0x00, 0x02, 0x0A), (0x00, 0x00, 0x00, 0x03))
+
+
+def tone_for_dual_read() -> mido.Message:
+    return roland_data_request_1((0x01, 0x00, 0x02, 0x0D), (0x00, 0x00, 0x00, 0x03))
+
+
 def split_point_set(note_midi: int) -> mido.Message:
     """Establece el punto de split (01 00 02 01). note_midi: 0-127."""
     if not 0 <= note_midi <= 127:
@@ -292,22 +316,88 @@ def split_point_read() -> mido.Message:
     return roland_data_request_1((0x01, 0x00, 0x02, 0x01), (0x00, 0x00, 0x00, 0x01))
 
 
+def split_balance_display_lr(panel_value_0_18: int) -> tuple[int, int]:
+    """Pareja izquierda:derecha (1..9 cada una) para la etiqueta de balance Split.
+
+    Valor SysEx/panel 0..18 con 9=centro: extremo 0 → 9:1, centro 9 → 9:9, extremo 18 → 1:9.
+    """
+    v = max(0, min(18, int(panel_value_0_18)))
+    if v <= 9:
+        return 9, 1 + (8 * v) // 9
+    return 1 + (8 * (18 - v)) // 9, 9
+
+
+def split_balance_sysex_byte(value: int) -> int:
+    """Índice de panel 0..18 (9=centro) al byte DT1 del FP-30X: mismo eje que dualBalance (`64 + (v−9)×3`)."""
+    v = max(0, min(18, int(value)))
+    return max(0, min(127, 64 + (v - 9) * 3))
+
+
+def split_balance_panel_from_sysex_byte(raw: int) -> int:
+    """Invierte el byte devuelto por RQ1/DT1 al índice de panel 0..18."""
+    if 0 <= raw <= 18:
+        return max(0, min(18, raw))
+    v = int(round((raw - 64) / 3 + 9))
+    return max(0, min(18, v))
+
+
+def dual_balance_display_lr(panel_value_6_11: int) -> tuple[int, int]:
+    """Misma convención visual que Split; panel Dual del FP-30X solo usa 6..11."""
+    v = max(DUAL_BALANCE_PANEL_MIN, min(DUAL_BALANCE_PANEL_MAX, int(panel_value_6_11)))
+    if v <= 9:
+        full = (v - DUAL_BALANCE_PANEL_MIN) * 3
+    else:
+        full = int(round(9 + (v - 9) * 4.5))
+    return split_balance_display_lr(full)
+
+
 def split_balance_set(value: int) -> mido.Message:
-    """Establece el balance del modo Split (01 00 02 03). 0-18 donde 9=centro."""
-    return roland_data_set_1((0x01, 0x00, 0x02, 0x03), (value,))
+    """Balance Split (01 00 02 03). Panel 0..18 (9=centro); el FP-30X usa byte DT1 centrado en 64."""
+    return roland_data_set_1((0x01, 0x00, 0x02, 0x03), (split_balance_sysex_byte(value),))
 
 
 def split_balance_read() -> mido.Message:
     return roland_data_request_1((0x01, 0x00, 0x02, 0x03), (0x00, 0x00, 0x00, 0x01))
 
 
+def dual_balance_sysex_byte(value: int) -> int:
+    """Codifica la posición de panel (9=centro) al byte DT1 centrado en 64.
+
+    El hardware solo acepta un subconjunto; se recorta a DUAL_BALANCE_PANEL_MIN/MAX.
+    """
+    v = max(DUAL_BALANCE_PANEL_MIN, min(DUAL_BALANCE_PANEL_MAX, int(value)))
+    return max(0, min(127, 64 + (v - 9) * 3))
+
+
+def dual_balance_panel_from_sysex_byte(raw: int) -> int:
+    """Invierte el byte devuelto por RQ1/DT1 al índice de panel, acotado al rango real."""
+    if raw <= 18:
+        v = raw
+    else:
+        v = int(round((raw - 64) / 3 + 9))
+    return max(DUAL_BALANCE_PANEL_MIN, min(DUAL_BALANCE_PANEL_MAX, v))
+
+
 def dual_balance_set(value: int) -> mido.Message:
-    """Establece el balance del modo Dual (01 00 02 05). 0-18 donde 9=centro."""
-    return roland_data_set_1((0x01, 0x00, 0x02, 0x05), (value,))
+    """Balance Dual en 01 00 02 05 (byte centrado en 64). FP-30X: panel útil ~6..11 (9=centro)."""
+    return roland_data_set_1((0x01, 0x00, 0x02, 0x05), (dual_balance_sysex_byte(value),))
 
 
 def dual_balance_read() -> mido.Message:
     return roland_data_request_1((0x01, 0x00, 0x02, 0x05), (0x00, 0x00, 0x00, 0x01))
+
+
+def dual_balance_control_changes(value: int) -> list[mido.Message]:
+    """CC7 en dos partes: refuerzo audible (MIDI Implementation §Volume)."""
+    b = dual_balance_sysex_byte(value)
+    # Derivar dos niveles a partir del mismo eje que el SysEx (simétricos respecto a 64).
+    d = b - 64
+    main = max(1, min(127, 100 - d))
+    layer = max(1, min(127, 100 + d))
+    return [
+        control_change(MIDI_DUAL_MAIN_VOLUME_CH, 7, main),
+        control_change(MIDI_DUAL_LAYER_VOLUME_CH, 7, layer),
+    ]
 
 
 def split_octave_shift_set(value: int) -> mido.Message:
@@ -323,6 +413,10 @@ def dual_octave_shift_set(value: int) -> mido.Message:
 def twin_piano_mode_set(mode: int) -> mido.Message:
     """Establece el modo Twin Piano (01 00 02 06). 0=Pair 1=Individual."""
     return roland_data_set_1((0x01, 0x00, 0x02, 0x06), (mode,))
+
+
+def twin_piano_mode_read() -> mido.Message:
+    return roland_data_request_1((0x01, 0x00, 0x02, 0x06), (0x00, 0x00, 0x00, 0x01))
 
 
 def metronome_volume_set(value_0_10: int) -> mido.Message:
@@ -350,7 +444,11 @@ def metronome_tone_read() -> mido.Message:
 
 
 def metronome_beat_set(value: int) -> mido.Message:
-    """Establece el compás del metrónomo (01 00 02 1F). Ver tabla §4.3."""
+    """Establece el compás del metrónomo (01 00 02 1F).
+
+    Tabla completa en PDF/midi_reference (incl. 2/2, 3/2, compases /8). Los seis presets
+    de la app móvil (0/4 … 6/4) usan valores SysEx consecutivos 0..5, no el subconjunto 0,2..6.
+    """
     return roland_data_set_1((0x01, 0x00, 0x02, 0x1F), (value,))
 
 
@@ -359,7 +457,10 @@ def metronome_beat_read() -> mido.Message:
 
 
 def metronome_pattern_set(value: int) -> mido.Message:
-    """Establece el patrón de metrónomo (01 00 02 20). 0-7."""
+    """Establece el patrón de metrónomo (01 00 02 20). 0-7 (0 = off en la app Roland)."""
+    if not 0 <= value <= 7:
+        msg = "Metronome pattern debe estar entre 0 y 7"
+        raise ValueError(msg)
     return roland_data_set_1((0x01, 0x00, 0x02, 0x20), (value,))
 
 

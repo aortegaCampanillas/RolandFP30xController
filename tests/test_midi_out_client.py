@@ -23,3 +23,19 @@ def test_trace_send_runs_before_hardware_send(monkeypatch) -> None:
     c.send(msg)
     assert traced == [msg]
     assert hardware == [msg]
+
+
+def test_close_clears_port_when_underlying_close_fails(monkeypatch) -> None:
+    class BadClosePort:
+        def send(self, _m: mido.Message) -> None:
+            pass
+
+        def close(self) -> None:
+            raise OSError("port gone")
+
+    monkeypatch.setattr(mido, "open_output", lambda _name: BadClosePort())
+    c = MidiOutClient()
+    c.open("dummy")
+    assert c.is_open
+    c.close()
+    assert not c.is_open

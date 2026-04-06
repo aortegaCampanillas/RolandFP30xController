@@ -239,3 +239,15 @@ def tone_dt1_encoding(tone: Tone) -> tuple[int, int, int]:
     tones_in_cat = TONE_CATEGORIES[cat]
     num = tones_in_cat.index(tone) if tone in tones_in_cat else 0
     return (cat_idx, num // 128, num % 128)
+
+
+def tone_from_dt1_bytes(category_idx: int, num_hi: int, num_lo: int) -> Tone | None:
+    """Inverso de los 3 bytes DT1 del piano → tono del catálogo, o None si fuera de rango."""
+    if not 0 <= category_idx < len(CATEGORIES):
+        return None
+    cat = CATEGORIES[category_idx]
+    tones = TONE_CATEGORIES.get(cat, [])
+    num = num_hi * 128 + num_lo
+    if not 0 <= num < len(tones):
+        return None
+    return tones[num]

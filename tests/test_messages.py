@@ -89,9 +89,35 @@ def test_master_coarse_tuning_realtime_sysex() -> None:
     assert list(m.bytes()) == [0xF0, 0x7F, 0x7F, 0x04, 0x04, 0x00, 0x45, 0xF7]
 
 
-def test_metronome_probe_on_sysex() -> None:
-    m = midix.metronome_probe_on()
+def test_app_connect_handshake_sysex() -> None:
+    m = midix.app_connect_handshake()
     assert list(m.bytes()) == [0xF0, 0x41, 0x10, 0x00, 0x00, 0x00, 0x28, 0x12, 0x01, 0x00, 0x03, 0x06, 0x01, 0x75, 0xF7]
+
+
+def test_dual_balance_fp30x_sysex_roundtrip() -> None:
+    for v in range(midix.DUAL_BALANCE_PANEL_MIN, midix.DUAL_BALANCE_PANEL_MAX + 1):
+        b = midix.dual_balance_sysex_byte(v)
+        assert midix.dual_balance_panel_from_sysex_byte(b) == v
+    assert midix.dual_balance_sysex_byte(0) == midix.dual_balance_sysex_byte(midix.DUAL_BALANCE_PANEL_MIN)
+    assert midix.dual_balance_sysex_byte(18) == midix.dual_balance_sysex_byte(midix.DUAL_BALANCE_PANEL_MAX)
+
+
+def test_split_balance_fp30x_sysex_roundtrip() -> None:
+    for v in range(19):
+        b = midix.split_balance_sysex_byte(v)
+        assert midix.split_balance_panel_from_sysex_byte(b) == v
+
+
+def test_split_balance_display_lr_endpoints() -> None:
+    assert midix.split_balance_display_lr(0) == (9, 1)
+    assert midix.split_balance_display_lr(9) == (9, 9)
+    assert midix.split_balance_display_lr(18) == (1, 9)
+
+
+def test_dual_balance_display_lr_endpoints() -> None:
+    assert midix.dual_balance_display_lr(midix.DUAL_BALANCE_PANEL_MIN) == (9, 1)
+    assert midix.dual_balance_display_lr(9) == (9, 9)
+    assert midix.dual_balance_display_lr(midix.DUAL_BALANCE_PANEL_MAX) == (1, 9)
 
 
 def test_parse_master_coarse_tuning_sysex() -> None:
