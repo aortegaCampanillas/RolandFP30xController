@@ -176,3 +176,66 @@ TONE_PRESETS: list[Tone] = [
     Tone('Contrabass', 121, 0, 44),
     Tone('Tremolo Str.', 121, 0, 45)
 ]
+
+# ── Categorías ───────────────────────────────────────────────────────────────
+
+CATEGORIES: list[str] = [
+    "Piano", "E.Piano", "Organ", "Strings", "Pad", "Synth", "Other", "Drums", "GM2"
+]
+
+_CATEGORY_FOR: dict[str, str] = {
+    # Piano
+    'Concert Piano': 'Piano', 'Ballad Piano': 'Piano', 'Mellow Piano': 'Piano',
+    'Bright Piano': 'Piano', 'Upright Piano': 'Piano', 'Mellow Upright': 'Piano',
+    'Bright Upright': 'Piano', 'Rock Piano': 'Piano', 'Ragtime Piano': 'Piano',
+    'Magical Piano': 'Piano', 'Harpsichord': 'Piano', "Harpsi 8'+4'": 'Piano',
+    # E.Piano
+    '1976SuitCase': 'E.Piano', 'Wurly 200': 'E.Piano', 'Phase EP Mix': 'E.Piano',
+    "80's FM EP": 'E.Piano', 'Clav.': 'E.Piano', 'Vibraphone': 'E.Piano', 'Celesta': 'E.Piano',
+    # Organ
+    'B.Organ Slow': 'Organ', 'Combo Jz.Org': 'Organ', 'Ballad Organ': 'Organ',
+    'Gospel Spin': 'Organ', 'Full Stops': 'Organ', 'Mellow Bars': 'Organ',
+    'Lower Organ': 'Organ', 'Light Organ': 'Organ', 'Pipe Organ': 'Organ',
+    "Nason Flt 8'": 'Organ', 'ChurchOrgan1': 'Organ', 'ChurchOrgan2': 'Organ',
+    'Accordion': 'Organ',
+    # Strings
+    'Epic Strings': 'Strings', 'Rich Strings': 'Strings', 'SymphonicStr1': 'Strings',
+    'SymphonicStr2': 'Strings', 'Orchestra': 'Strings', 'String Trio': 'Strings',
+    'Harpiness': 'Strings', 'OrchestraBrs': 'Strings',
+    # Pad
+    'Super SynPad': 'Pad', 'Choir Aahs 1': 'Pad', 'Choir Aahs 2': 'Pad',
+    'D50 StackPad': 'Pad', 'JP8 Strings': 'Pad', 'Soft Pad': 'Pad', 'Solina': 'Pad',
+    # Synth
+    'Super Saw': 'Synth', 'Trancy Synth': 'Synth', 'Flip Pad': 'Synth',
+    # Other (vocals, guitar, bass — no drums/GM2)
+    'Jazz Scat': 'Other', "Comp'd JBass": 'Other', 'Nylon-str.Gt': 'Other',
+    'Steel-str.Gt': 'Other', 'AcousticBass': 'Other', 'A.Bass+Cymbl': 'Other',
+}
+
+
+def category_of(tone: Tone) -> str:
+    """Devuelve la categoría de un tono según banco MIDI o nombre."""
+    if tone.bank_msb == 120:
+        return "Drums"
+    if tone.bank_msb == 121:
+        return "GM2"
+    return _CATEGORY_FOR.get(tone.name, "Other")
+
+
+# Mapa ordenado: categoría → lista de tonos en ese orden
+TONE_CATEGORIES: dict[str, list[Tone]] = {cat: [] for cat in CATEGORIES}
+for _t in TONE_PRESETS:
+    TONE_CATEGORIES[category_of(_t)].append(_t)
+
+
+def tone_dt1_encoding(tone: Tone) -> tuple[int, int, int]:
+    """Devuelve los 3 bytes internos Roland para toneForSingle/Split/Dual.
+
+    Formato: [category_idx, num // 128, num % 128]
+    donde num es el índice del tono dentro de su categoría.
+    """
+    cat = category_of(tone)
+    cat_idx = CATEGORIES.index(cat)
+    tones_in_cat = TONE_CATEGORIES[cat]
+    num = tones_in_cat.index(tone) if tone in tones_in_cat else 0
+    return (cat_idx, num // 128, num % 128)

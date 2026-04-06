@@ -252,6 +252,248 @@ def master_volume_realtime(value_0_127: int) -> mido.Message:
     return mido.Message("sysex", data=(0x7F, 0x7F, 0x04, 0x01, 0x00, value_0_127))
 
 
+def keyboard_mode_set(mode: int) -> mido.Message:
+    """Establece el modo de teclado (01 00 02 00). 0=Single 1=Split 2=Dual 3=Twin."""
+    if not 0 <= mode <= 3:
+        msg = "keyboard mode debe estar entre 0 y 3"
+        raise ValueError(msg)
+    return roland_data_set_1((0x01, 0x00, 0x02, 0x00), (mode,))
+
+
+def keyboard_mode_read() -> mido.Message:
+    """Solicita el modo de teclado (RQ1). Respuesta en 01 00 02 00."""
+    return roland_data_request_1((0x01, 0x00, 0x02, 0x00), (0x00, 0x00, 0x00, 0x01))
+
+
+def tone_for_single_set(category_idx: int, num: int) -> mido.Message:
+    """Establece el tono del modo Single (01 00 02 07). 3 bytes: [cat, num//128, num%128]."""
+    return roland_data_set_1((0x01, 0x00, 0x02, 0x07), (category_idx, num // 128, num % 128))
+
+
+def tone_for_split_set(category_idx: int, num: int) -> mido.Message:
+    """Establece el tono izquierdo del modo Split (01 00 02 0A)."""
+    return roland_data_set_1((0x01, 0x00, 0x02, 0x0A), (category_idx, num // 128, num % 128))
+
+
+def tone_for_dual_set(category_idx: int, num: int) -> mido.Message:
+    """Establece el segundo tono del modo Dual (01 00 02 0D)."""
+    return roland_data_set_1((0x01, 0x00, 0x02, 0x0D), (category_idx, num // 128, num % 128))
+
+
+def split_point_set(note_midi: int) -> mido.Message:
+    """Establece el punto de split (01 00 02 01). note_midi: 0-127."""
+    if not 0 <= note_midi <= 127:
+        msg = "Split point debe estar entre 0 y 127"
+        raise ValueError(msg)
+    return roland_data_set_1((0x01, 0x00, 0x02, 0x01), (note_midi,))
+
+
+def split_point_read() -> mido.Message:
+    return roland_data_request_1((0x01, 0x00, 0x02, 0x01), (0x00, 0x00, 0x00, 0x01))
+
+
+def split_balance_set(value: int) -> mido.Message:
+    """Establece el balance del modo Split (01 00 02 03). 0-18 donde 9=centro."""
+    return roland_data_set_1((0x01, 0x00, 0x02, 0x03), (value,))
+
+
+def split_balance_read() -> mido.Message:
+    return roland_data_request_1((0x01, 0x00, 0x02, 0x03), (0x00, 0x00, 0x00, 0x01))
+
+
+def dual_balance_set(value: int) -> mido.Message:
+    """Establece el balance del modo Dual (01 00 02 05). 0-18 donde 9=centro."""
+    return roland_data_set_1((0x01, 0x00, 0x02, 0x05), (value,))
+
+
+def dual_balance_read() -> mido.Message:
+    return roland_data_request_1((0x01, 0x00, 0x02, 0x05), (0x00, 0x00, 0x00, 0x01))
+
+
+def split_octave_shift_set(value: int) -> mido.Message:
+    """Transposición de octava en Split (01 00 02 02). Encoding: value+64."""
+    return roland_data_set_1((0x01, 0x00, 0x02, 0x02), (value + 64,))
+
+
+def dual_octave_shift_set(value: int) -> mido.Message:
+    """Transposición de octava en Dual (01 00 02 04). Encoding: value+64."""
+    return roland_data_set_1((0x01, 0x00, 0x02, 0x04), (value + 64,))
+
+
+def twin_piano_mode_set(mode: int) -> mido.Message:
+    """Establece el modo Twin Piano (01 00 02 06). 0=Pair 1=Individual."""
+    return roland_data_set_1((0x01, 0x00, 0x02, 0x06), (mode,))
+
+
+def metronome_volume_set(value_0_10: int) -> mido.Message:
+    """Establece el volumen del metrónomo (01 00 02 21). 0=silenciado, 1–10."""
+    if not 0 <= value_0_10 <= 10:
+        msg = "Metronome volume debe estar entre 0 y 10"
+        raise ValueError(msg)
+    return roland_data_set_1((0x01, 0x00, 0x02, 0x21), (value_0_10,))
+
+
+def metronome_volume_read() -> mido.Message:
+    return roland_data_request_1((0x01, 0x00, 0x02, 0x21), (0x00, 0x00, 0x00, 0x01))
+
+
+def metronome_tone_set(value_0_3: int) -> mido.Message:
+    """Establece el sonido del metrónomo (01 00 02 22). 0=Click 1=Electronic 2=Voice-JP 3=Voice-EN."""
+    if not 0 <= value_0_3 <= 3:
+        msg = "Metronome tone debe estar entre 0 y 3"
+        raise ValueError(msg)
+    return roland_data_set_1((0x01, 0x00, 0x02, 0x22), (value_0_3,))
+
+
+def metronome_tone_read() -> mido.Message:
+    return roland_data_request_1((0x01, 0x00, 0x02, 0x22), (0x00, 0x00, 0x00, 0x01))
+
+
+def metronome_beat_set(value: int) -> mido.Message:
+    """Establece el compás del metrónomo (01 00 02 1F). Ver tabla §4.3."""
+    return roland_data_set_1((0x01, 0x00, 0x02, 0x1F), (value,))
+
+
+def metronome_beat_read() -> mido.Message:
+    return roland_data_request_1((0x01, 0x00, 0x02, 0x1F), (0x00, 0x00, 0x00, 0x01))
+
+
+def metronome_pattern_set(value: int) -> mido.Message:
+    """Establece el patrón de metrónomo (01 00 02 20). 0-7."""
+    return roland_data_set_1((0x01, 0x00, 0x02, 0x20), (value,))
+
+
+def metronome_pattern_read() -> mido.Message:
+    return roland_data_request_1((0x01, 0x00, 0x02, 0x20), (0x00, 0x00, 0x00, 0x01))
+
+
+def master_tuning_set(cents_offset: float) -> mido.Message:
+    """Establece el master tuning (01 00 02 18). cents_offset: -50.0..+50.0.
+
+    Encoding: 14-bit centrado en 8192 (= 440 Hz).
+    value = 8192 + round(cents_offset * 8191 / 50)
+    Dividido en 2 bytes de 7 bits: [value // 128, value % 128].
+    """
+    if not -50.0 <= cents_offset <= 50.0:
+        msg = "Master tuning offset debe estar entre -50 y +50 cents"
+        raise ValueError(msg)
+    raw = 8192 + round(cents_offset * 8191 / 50)
+    raw = max(0, min(16383, raw))
+    return roland_data_set_1((0x01, 0x00, 0x02, 0x18), (raw // 128, raw % 128))
+
+
+def master_tuning_read() -> mido.Message:
+    """Solicita el master tuning (RQ1). Respuesta en 01 00 02 18, 2 bytes."""
+    return roland_data_request_1((0x01, 0x00, 0x02, 0x18), (0x00, 0x00, 0x00, 0x02))
+
+
+def key_touch_set(value_0_3: int) -> mido.Message:
+    """Establece la sensibilidad del teclado (01 00 02 1D). 0=Fix 1=Light 2=Medium 3=Heavy."""
+    if not 0 <= value_0_3 <= 3:
+        msg = "Key Touch debe estar entre 0 y 3"
+        raise ValueError(msg)
+    return roland_data_set_1((0x01, 0x00, 0x02, 0x1D), (value_0_3,))
+
+
+def key_touch_read() -> mido.Message:
+    """Solicita la sensibilidad del teclado (RQ1). Respuesta en 01 00 02 1D, 1 byte."""
+    return roland_data_request_1((0x01, 0x00, 0x02, 0x1D), (0x00, 0x00, 0x00, 0x01))
+
+
+def brilliance_set(value_neg1_to_pos1: int) -> mido.Message:
+    """Establece el brillo del sonido (01 00 02 1C). Rango -1..+1, centrado en 64."""
+    if not -1 <= value_neg1_to_pos1 <= 1:
+        msg = "Brilliance debe estar entre -1 y +1"
+        raise ValueError(msg)
+    return roland_data_set_1((0x01, 0x00, 0x02, 0x1C), (64 + value_neg1_to_pos1,))
+
+
+def brilliance_read() -> mido.Message:
+    """Solicita el brillo del sonido (RQ1). Respuesta en 01 00 02 1C, 1 byte."""
+    return roland_data_request_1((0x01, 0x00, 0x02, 0x1C), (0x00, 0x00, 0x00, 0x01))
+
+
+def ambience_set(value_0_10: int) -> mido.Message:
+    """Establece el nivel de ambience (01 00 02 1A). Rango 0–10."""
+    if not 0 <= value_0_10 <= 10:
+        msg = "Ambience debe estar entre 0 y 10"
+        raise ValueError(msg)
+    return roland_data_set_1((0x01, 0x00, 0x02, 0x1A), (value_0_10,))
+
+
+def ambience_read() -> mido.Message:
+    """Solicita el nivel de ambience (RQ1). Respuesta en 01 00 02 1A, 1 byte."""
+    return roland_data_request_1((0x01, 0x00, 0x02, 0x1A), (0x00, 0x00, 0x00, 0x01))
+
+
+# ── Piano Designer ───────────────────────────────────────────────────────────
+# Direcciones extraídas por ingeniería inversa de Roland Piano App 1.5.9.
+# addressMapModelId: 00000019 — parámetros temporales del Piano Designer.
+# Los parámetros "temporales" (02 xxxxxx) se aplican en tiempo real pero
+# se guardan en el piano solo con el comando writePianoDesigner.
+
+_PD_PREFIX = (0x02, 0x00, 0x00)  # prefijo parámetros Piano Designer
+
+def _pd_addr(offset: int) -> tuple[int, int, int, int]:
+    return (0x02, 0x00, 0x00, offset)
+
+
+def piano_designer_lid_set(value_0_6: int) -> mido.Message:
+    """Establece la apertura de la tapa (Lid). 0–6."""
+    return roland_data_set_1(_pd_addr(0x01), (max(0, min(6, value_0_6)),))
+
+
+def piano_designer_string_resonance_set(value: int) -> mido.Message:
+    """Establece String Resonance. 0=Off, 1–10."""
+    return roland_data_set_1(_pd_addr(0x02), (max(0, min(10, value)),))
+
+
+def piano_designer_damper_resonance_set(value: int) -> mido.Message:
+    """Establece Damper Resonance. 0=Off, 1–10."""
+    return roland_data_set_1(_pd_addr(0x03), (max(0, min(10, value)),))
+
+
+def piano_designer_key_off_resonance_set(value: int) -> mido.Message:
+    """Establece Key Off Resonance. 0=Off, 1–10."""
+    return roland_data_set_1(_pd_addr(0x06), (max(0, min(10, value)),))
+
+
+def piano_designer_temperament_set(value_0_8: int) -> mido.Message:
+    """Establece el temperamento. 0=Equal 1=JustMajor 2=JustMinor 3=Pythagorean
+    4=Kirnberger1 5=Kirnberger2 6=Kirnberger3 7=Meantone 8=Werckmeister 9=Arabic."""
+    return roland_data_set_1((0x01, 0x00, 0x00, 0x04), (max(0, min(9, value_0_8)),))
+
+
+def piano_designer_temperament_key_set(value_0_11: int) -> mido.Message:
+    """Establece la tónica del temperamento. 0=C, 1=C#, …, 11=B."""
+    return roland_data_set_1((0x01, 0x00, 0x00, 0x05), (max(0, min(11, value_0_11)),))
+
+
+def piano_designer_write() -> mido.Message:
+    """Guarda los parámetros del Piano Designer en el piano (writePianoDesigner)."""
+    return roland_data_set_1((0x01, 0x02, 0x00, 0x01), (0x01,))
+
+
+def piano_designer_enter() -> mido.Message:
+    """Notifica al piano que se entra en modo Piano Designer."""
+    return roland_data_set_1((0x01, 0x02, 0x00, 0x00), (0x01,))
+
+
+def piano_designer_individual_note_tuning_set(note_0_87: int, cents_x10: int) -> mido.Message:
+    """Ajusta el fine tuning de una nota individual. cents_x10: -500..+500 (= -50.0..+50.0 cents).
+    Dirección: 02 10 04 00 + note (offset por nota). Encoding: value + 500 centrado."""
+    raw = max(0, min(1000, cents_x10 + 500))
+    addr = (0x02, 0x10, 0x04, note_0_87)
+    return roland_data_set_1(addr, (raw // 128, raw % 128))
+
+
+def piano_designer_individual_note_character_set(note_0_87: int, value: int) -> mido.Message:
+    """Ajusta el carácter tonal de una nota individual. value: -5..+5 → offset 5."""
+    raw = max(0, min(10, value + 5))
+    addr = (0x02, 0x10, 0x05, note_0_87)
+    return roland_data_set_1(addr, (raw,))
+
+
 def gm2_global_reverb_parameter(parameter_pp: int, value_0_127: int) -> mido.Message:
     """
     GM2 Universal Realtime — Global Parameter Control, ranura Reverb (0101).
