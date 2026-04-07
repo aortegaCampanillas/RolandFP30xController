@@ -141,24 +141,20 @@ jobs:
         run: |
           $pkgDir = "dist\PianoPilot"
 
-          # Inyectar versión (vX.Y.Z → X.Y.Z.0) y Publisher en el manifiesto.
-          # .Trim() elimina newlines o espacios sobrantes del secreto (copy-paste).
-          $tag       = "${{ github.ref_name }}".TrimStart('v')
-          $version   = "$tag.0"
-          $publisher = "${{ secrets.MSIX_PUBLISHER }}".Trim()
+          # Inyectar versión (vX.Y.Z → X.Y.Z.0). El Publisher ya está
+          # hardcodeado en el XML (no es dato sensible).
+          $version = "${{ github.ref_name }}".TrimStart('v') + ".0"
 
           $content = Get-Content "packaging\windows\AppxManifest.xml" -Raw -Encoding UTF8
           $content = $content -replace 'PACKAGE_VERSION', $version
-          $content = $content -replace 'PUBLISHER_CN',    $publisher
           [System.IO.File]::WriteAllText(
             (Resolve-Path $pkgDir).Path + "\AppxManifest.xml",
             $content,
-            [System.Text.Encoding]::UTF8
+            [System.Text.UTF8Encoding]::new($false)
           )
 
-          # Verificar que el placeholder fue sustituido
-          if (Select-String -Path "$pkgDir\AppxManifest.xml" -Pattern 'PUBLISHER_CN|PACKAGE_VERSION' -Quiet) {
-            Write-Error "El manifiesto aún contiene placeholders sin sustituir."
+          if (Select-String -Path "$pkgDir\AppxManifest.xml" -Pattern 'PACKAGE_VERSION' -Quiet) {
+            Write-Error "El manifiesto aún contiene el placeholder PACKAGE_VERSION."
             exit 1
           }
           Write-Host "Manifiesto generado correctamente (version=$version)"

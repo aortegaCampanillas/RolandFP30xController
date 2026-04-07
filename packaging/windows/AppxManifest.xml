@@ -2,11 +2,9 @@
 <!--
   AppxManifest.xml — Piano Pilot for FP-30X (Windows Store / MSIX)
 
-  Pasos de configuración (una sola vez):
-  1. Regístrate en Microsoft Partner Center y crea la entrada de la app.
-  2. Anota el "Publisher" que te asigna Partner Center (formato: CN=XXXXXXXX-…).
-  3. Añade ese valor como secreto MSIX_PUBLISHER en tu repositorio de GitHub.
-  4. El workflow de CI sustituirá PUBLISHER_CN y PACKAGE_VERSION en tiempo de build.
+  El campo Publisher (CN de Partner Center) está hardcodeado aquí porque
+  no es información sensible: queda embebido en el MSIX publicado.
+  Solo Version se sustituye dinámicamente en CI (placeholder PACKAGE_VERSION).
 
   MIDI: las apps Desktop Bridge (runFullTrust) acceden a la MIDI API de Win32
   sin declaraciones adicionales de capacidad.
@@ -19,7 +17,7 @@
 
   <Identity
     Name="Antonioortega.62675458F0350"
-    Publisher="PUBLISHER_CN"
+    Publisher="CN=E70C548D-768A-4F80-B0D6-41DB1F7A402F"
     Version="PACKAGE_VERSION"
     ProcessorArchitecture="x64" />
 
