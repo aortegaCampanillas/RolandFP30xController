@@ -260,7 +260,7 @@ La interfaz está disponible en **español** e **inglés**.
 `https://[your-domain]/`
 
 **Privacy policy URL:**  
-`https://[your-domain]/privacy`
+`https://sites.google.com/d/1e04u-XgmzXTBorPbcV9R-RX34QansCTX/p/1YuchH8tmmW80RuHM-8RiOrg9mcs86Y5u/edit`
 
 **What’s to Test (for App Review):**  
 1. Connect Roland FP-30X via USB.  
