@@ -29,7 +29,7 @@
 
   <Dependencies>
     <!-- Windows 10 1809 (build 17763) o superior -->
-    <TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.17763.0" MaxVersion="10.0.99999.0" />
+    <TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.17763.0" MaxVersionTested="10.0.26100.0" />
   </Dependencies>
 
   <Resources>
