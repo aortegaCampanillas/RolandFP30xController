@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  AppxManifest.xml — Piano Pilot for FP-30X (Windows Store / MSIX)
+  AppxManifest.xml — PianoPilot for FP-30X (Windows Store / MSIX)
 
   El campo Publisher (CN de Partner Center) está hardcodeado aquí porque
   no es información sensible: queda embebido en el MSIX publicado.
@@ -22,7 +22,7 @@
     ProcessorArchitecture="x64" />
 
   <Properties>
-    <DisplayName>Piano Pilot for FP-30X</DisplayName>
+    <DisplayName>PianoPilot for FP-30X</DisplayName>
     <PublisherDisplayName>Antonio ortega</PublisherDisplayName>
     <Logo>Assets\StoreLogo.png</Logo>
   </Properties>
@@ -43,7 +43,7 @@
       Executable="PianoPilot.exe"
       EntryPoint="Windows.FullTrustApplication">
       <uap:VisualElements
-        DisplayName="Piano Pilot for FP-30X"
+        DisplayName="PianoPilot for FP-30X"
         Description="Desktop controller for Roland FP-30X via MIDI (SysEx / RPN / CC)"
         Square150x150Logo="Assets\Square150x150Logo.png"
         Square44x44Logo="Assets\Square44x44Logo.png"
