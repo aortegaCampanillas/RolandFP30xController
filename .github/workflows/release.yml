@@ -101,9 +101,84 @@ jobs:
           name: windows-exe
           path: "PianoPilot-for-FP30X-${{ github.ref_name }}-windows.exe"
 
+  # ── Windows MSIX (Windows Store) ─────────────────────────────────────────
+  build-msix:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -e .
+          pip install pyinstaller
+
+      - name: Generate .ico icon
+        run: python scripts/make_ico.py app_icon.ico
+
+      - name: Build folder layout (PyInstaller)
+        run: |
+          pyinstaller `
+            --windowed `
+            --icon app_icon.ico `
+            --name PianoPilot `
+            --collect-all roland_fp30x_controller `
+            --collect-all mido `
+            --hidden-import mido.backends.rtmidi `
+            --hidden-import rtmidi `
+            src/roland_fp30x_controller/__main__.py
+
+      - name: Generate MSIX assets
+        run: python scripts/make_msix_assets.py packaging/windows/Assets
+
+      - name: Assemble MSIX package layout
+        shell: pwsh
+        run: |
+          $pkgDir = "dist\PianoPilot"
+
+          # Inyectar versión (vX.Y.Z → X.Y.Z.0) y Publisher en el manifiesto
+          $tag = "${{ github.ref_name }}".TrimStart('v')
+          $version = "$tag.0"
+          $publisher = "${{ secrets.MSIX_PUBLISHER }}"
+          (Get-Content packaging\windows\AppxManifest.xml) `
+            -replace 'PACKAGE_VERSION', $version `
+            -replace 'PUBLISHER_CN', $publisher |
+            Set-Content "$pkgDir\AppxManifest.xml"
+
+          # Copiar assets
+          New-Item -ItemType Directory -Force "$pkgDir\Assets" | Out-Null
+          Copy-Item packaging\windows\Assets\* "$pkgDir\Assets\"
+
+      - name: Build MSIX with makeappx
+        shell: pwsh
+        run: |
+          # Localizar makeappx.exe del Windows SDK instalado en el runner
+          $makeappx = Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\bin" `
+            -Recurse -Filter makeappx.exe -ErrorAction SilentlyContinue |
+            Where-Object { $_.FullName -match 'x64' } |
+            Sort-Object FullName |
+            Select-Object -Last 1 -ExpandProperty FullName
+
+          if (-not $makeappx) { throw "makeappx.exe no encontrado" }
+          Write-Host "Usando: $makeappx"
+
+          $msix = "PianoPilot-for-FP30X-${{ github.ref_name }}-windows.msix"
+          & $makeappx pack /d dist\PianoPilot /p $msix /nv
+          Write-Host "MSIX generado: $msix"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-msix
+          path: "PianoPilot-for-FP30X-${{ github.ref_name }}-windows.msix"
+
   # ── Crear GitHub Release ─────────────────────────────────────────────────
   release:
-    needs: [build-macos, build-windows]
+    needs: [build-macos, build-windows, build-msix]
     runs-on: ubuntu-latest
 
     steps:
@@ -120,3 +195,4 @@ jobs:
           files: |
             *.dmg
             *.exe
+            *.msix

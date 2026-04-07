@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  AppxManifest.xml — Piano Pilot for FP-30X (Windows Store / MSIX)
+
+  Pasos de configuración (una sola vez):
+  1. Regístrate en Microsoft Partner Center y crea la entrada de la app.
+  2. Anota el "Publisher" que te asigna Partner Center (formato: CN=XXXXXXXX-…).
+  3. Añade ese valor como secreto MSIX_PUBLISHER en tu repositorio de GitHub.
+  4. El workflow de CI sustituirá PUBLISHER_CN y PACKAGE_VERSION en tiempo de build.
+
+  MIDI: las apps Desktop Bridge (runFullTrust) acceden a la MIDI API de Win32
+  sin declaraciones adicionales de capacidad.
+-->
+<Package
+  xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
+  xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
+  xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
+  IgnorableNamespaces="rescap">
+
+  <Identity
+    Name="Antonioortega.62675458F0350"
+    Publisher="PUBLISHER_CN"
+    Version="PACKAGE_VERSION"
+    ProcessorArchitecture="x64" />
+
+  <Properties>
+    <DisplayName>Piano Pilot for FP-30X</DisplayName>
+    <PublisherDisplayName>Antonio ortega</PublisherDisplayName>
+    <Logo>Assets\StoreLogo.png</Logo>
+  </Properties>
+
+  <Dependencies>
+    <!-- Windows 10 1809 (build 17763) o superior -->
+    <TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.17763.0" MaxVersion="10.0.99999.0" />
+  </Dependencies>
+
+  <Resources>
+    <Resource Language="en-US" />
+    <Resource Language="es-ES" />
+  </Resources>
+
+  <Applications>
+    <Application
+      Id="PianoPilot"
+      Executable="PianoPilot.exe"
+      EntryPoint="Windows.FullTrustApplication">
+      <uap:VisualElements
+        DisplayName="Piano Pilot for FP-30X"
+        Description="Desktop controller for Roland FP-30X via MIDI (SysEx / RPN / CC)"
+        Square150x150Logo="Assets\Square150x150Logo.png"
+        Square44x44Logo="Assets\Square44x44Logo.png"
+        BackgroundColor="transparent">
+        <uap:DefaultTile
+          Wide310x150Logo="Assets\Wide310x150Logo.png"
+          Square310x310Logo="Assets\Square310x310Logo.png" />
+        <uap:SplashScreen Image="Assets\SplashScreen.png" />
+      </uap:VisualElements>
+    </Application>
+  </Applications>
+
+  <Capabilities>
+    <!-- Requerido para apps PyInstaller (Win32 full trust) -->
+    <rescap:Capability Name="runFullTrust" />
+  </Capabilities>
+
+</Package>

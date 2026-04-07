@@ -1,113 +1,210 @@
-# Packaging for distribution, Microsoft Store, and Mac App Store
+# Generación de builds para distribución y tiendas
 
-Plan for shipping **Roland FP-30X Controller** as a signed desktop app, optionally via **Microsoft Store (MSIX)** or **Mac App Store (MAS)**. This is operational guidance only—not legal advice.
-
----
-
-## 1. Choose your license for *your* code (already set)
-
-- **`LICENSE`**: **MIT** for project-authored code.  
-- **Why MIT (vs BSD/GPL)?**  
-  - **MIT**: very common, short, compatible with most stores and with shipping LGPL’d Qt next to your app.  
-  - **BSD 2/3-clause**: similar permissiveness; 3-clause has “no endorsement” language.  
-  - **GPL-3.0** for *your* app: usually **avoid** if you use PySide6 under **LGPL** and want to keep the rest of your code non-copyleft; GPLv3 would force a different compliance story.  
-- **LGPL** applies to **Qt/PySide6** when you distribute binaries, not necessarily to your Python code; see `THIRD_PARTY_NOTICES.md`.
+Guía operativa para producir los artefactos de distribución de **PianoPilot for FP-30X**: DMG (macOS directo), `.pkg` (Mac App Store), `.exe` (Windows directo) y `.msix` (Windows Store).
 
 ---
 
-## 2. Baseline: reproducible build environment
+## Resumen rápido
 
-- **Pin** Python (e.g. 3.11 or 3.12) and dependency versions for release (`requirements-release.txt` or `pip freeze`).  
-- Build on the **target OS** (Windows build for Windows; macOS build for Mac).  
-- Run tests: `pytest`.  
-- Include **`LICENSE`**, **`THIRD_PARTY_NOTICES.md`**, and (if applicable) Qt/PySide license files inside the installer or app bundle.
-
----
-
-## 3. Windows: PyInstaller → signed EXE → optional MSIX
-
-### 3.1 One-folder vs one-file
-
-- **One-folder** (`--onedir`): faster startup, easier to swap Qt DLLs for LGPL workflows.  
-- **One-file** (`--onefile`): single EXE; still bundles Qt inside the extractor; verify LGPL obligations for your chosen layout.
-
-### 3.2 PyInstaller sketch
-
-1. Install deps in a clean venv.  
-2. Add a **spec file** (e.g. `packaging/windows/roland_fp30x.spec`) that:  
-   - Collects `roland_fp30x_controller` + data (`resources/*.svg`).  
-   - Collects PySide6 Qt plugins (`platforms`, `styles`, etc.).  
-   - Sets a Windows icon (`.ico`) if desired.  
-3. Build: `pyinstaller packaging/windows/roland_fp30x.spec`
-
-### 3.3 Code signing (outside Store)
-
-- Sign the main executable and any bundled DLLs you sign (policy varies).  
-- Use an **EV** certificate if you want SmartScreen reputation faster.
-
-### 3.4 Microsoft Store (MSIX)
-
-1. Produce an **MSIX** package (e.g. via **MSIX Packaging Tool**, or pipeline that wraps the PyInstaller output).  
-2. **Declare capabilities**: e.g. access relevant device classes if Store policy requires explicit declaration for MIDI/USB; confirm current Partner Center docs.  
-3. **Privacy policy URL** (even for local-only MIDI).  
-4. **Store policies**: content, cryptography export, third-party notices (link or embed `THIRD_PARTY_NOTICES.md`).  
-5. **Sign** the MSIX with a cert trusted for Store submission.
-
-**Note:** LGPL compliance for Qt DLLs inside MSIX must still be satisfied (shared components, notices, and replacement/source obligations per LGPL-3.0).
+| Artefacto | Plataforma | Cómo se genera | Cuándo |
+|-----------|-----------|----------------|--------|
+| `.dmg` | macOS (descarga directa) | CI automático | Push de tag `v*.*.*` |
+| `.pkg` | Mac App Store | Script local `build_mas_store.sh` | Manualmente antes de subir |
+| `.exe` | Windows (descarga directa) | CI automático | Push de tag `v*.*.*` |
+| `.msix` | Windows Store | CI automático | Push de tag `v*.*.*` |
 
 ---
 
-## 4. macOS: PyInstaller (or briefcase) → .app → notarization → optional MAS
+## 1. CI automático — push de un tag
 
-### 4.1 Bundle layout
+Todos los builds automáticos se lanzan al hacer push de un tag con formato `vX.Y.Z`:
 
-- Use PyInstaller **`--windowed`** / **`BUNDLE`** target to produce `Roland FP30x Controller.app`.  
-- **Info.plist**: `CFBundleIdentifier`, version, `CFBundleName`, `NSHighResolutionCapable`, optional `LSMinimumSystemVersion`.  
-- **Icon**: `.icns` in the bundle.
+```bash
+git tag v1.2.3
+git push origin v1.2.3
+```
 
-### 4.2 Code signing & notarization (direct distribution)
-
-1. **Developer ID Application** signing for all binaries and frameworks inside `.app`.  
-2. **Hardened Runtime** entitlements (minimal set for MIDI; avoid unnecessary entitlements).  
-3. **`codesign --deep --strict`** on the `.app`.  
-4. **Notarize** with `notarytool` / `xcrun notarytool`, then staple.
-
-### 4.3 Mac App Store (MAS)
-
-MAS is **stricter** than Developer ID distribution:
-
-- **App Sandbox** usually required; verify MIDI access under sandbox (CoreMIDI) with Apple’s current entitlement documentation.  
-- **App Store Connect** metadata, privacy nutrition labels, export compliance.  
-- **Third-party licenses**: include Qt/PySide LGPL notices in the bundle and/or legal links.  
-- You may need to **remove or gate** macOS-only code paths that conflict with sandbox rules (e.g. optional PyObjC Dock tweaks if they imply disallowed behavior—re-test).
-
-**Practical note:** Many PySide6 apps ship **outside** MAS via Developer ID + notarization first; MAS is a second, heavier milestone.
+El workflow [`.github/workflows/release.yml`](../.github/workflows/release.yml) ejecuta tres jobs en paralelo (`build-macos`, `build-windows`, `build-msix`) y luego el job `release` que publica la GitHub Release con todos los artefactos adjuntos.
 
 ---
 
-## 5. Alternative toolchains (optional)
+## 2. macOS — DMG (distribución directa)
 
-- **Briefcase** (BeeWare): oriented to packaged apps; still need signing/notarization on Mac.  
-- **cx_Freeze**, **Nuitka**: alternatives to PyInstaller; same signing/LGPL story.
+**Job:** `build-macos` · Runner: `macos-latest`
 
----
+### Proceso
 
-## 6. Release checklist (short)
+1. PyInstaller con `--windowed` genera `dist/PianoPilot for FP-30X.app`.
+2. `codesign --force --deep --sign -` firma ad-hoc (suficiente para Apple Silicon).
+3. `create-dmg` produce el DMG.
 
-- [ ] Frozen build runs on a **clean VM** without Python installed.  
-- [ ] MIDI device appears; Connect/Refresh works.  
-- [ ] `LICENSE` + `THIRD_PARTY_NOTICES.md` shipped with the product or linked from Store listing.  
-- [ ] Version bumped (`pyproject.toml` + bundle metadata).  
-- [ ] Windows: signed binary / MSIX validated.  
-- [ ] macOS: signed + notarized `.app`; Gatekeeper OK.  
-- [ ] Lawyer review if publishing commercially or under strict enterprise policy.
+### Ad-hoc vs Developer ID
+
+La firma ad-hoc permite ejecutar el `.app` en el propio Mac que lo compiló o en Macs del mismo arq. Si quieres distribuirlo sin el aviso de Gatekeeper a usuarios externos, necesitas una firma con **Developer ID Application** y **notarización** (`xcrun notarytool`). Eso no está automatizado aún en CI; se haría localmente antes de crear el DMG.
 
 ---
 
-## 7. References
+## 3. macOS — Mac App Store (`.pkg`)
 
-- PyInstaller: <https://pyinstaller.org/>  
-- Qt licensing: <https://www.qt.io/licensing/>  
-- LGPL-3.0: <https://www.gnu.org/licenses/lgpl-3.0.html>  
-- Microsoft MSIX: Microsoft Learn “MSIX” documentation  
-- Apple: App Store Review Guidelines, App Sandbox, notarization docs  
+Este build **no está en CI** porque requiere certificados y un perfil de provisioning de Apple Developer que no deben subirse al repositorio.
+
+### Prerrequisitos (una sola vez)
+
+1. Ser miembro del **Apple Developer Program** (99 $/año).
+2. En Xcode / Keychain: tener instaladas las identidades de firma:
+   - `3rd Party Mac Developer Application: Tu Nombre (TEAMID)`
+   - `3rd Party Mac Developer Installer: Tu Nombre (TEAMID)`
+3. Crear un **provisioning profile** de tipo *Mac App Store* en App Store Connect y descargarlo (`.provisionprofile`).
+4. Crear el venv de build MAS (necesario porque el build MAS usa flags distintos a los del venv de desarrollo):
+   ```bash
+   scripts/bootstrap_mas_build_env.sh
+   ```
+
+### Configurar `signing/local/mas.env`
+
+```bash
+cp scripts/mas-env.example signing/local/mas.env
+# Edita el archivo con tus valores:
+#   MAS_APP_DIST_IDENTITY   → "3rd Party Mac Developer Application: ..."
+#   MAS_INSTALLER_IDENTITY  → "3rd Party Mac Developer Installer: ..."
+#   MAS_BUNDLE_ID           → "com.tuempresa.pianopilot"
+#   MAS_PROVISIONING_PROFILE → "/ruta/al/archivo.provisionprofile"
+#   PYTHON_BIN              → ".venv-mas/bin/python"
+#   MAS_VERSION             → "1.2.3"
+#   MAS_BUILD_NUMBER        → "123"
+```
+
+> `signing/local/` está en `.gitignore`. Nunca subas certificados ni este archivo.
+
+### Generar el `.pkg`
+
+```bash
+./scripts/build_mas_store.sh
+```
+
+El script ejecuta internamente `build_mas_pkg.sh` y realiza:
+
+1. **PyInstaller** (`--windowed`, sin WebEngine ni componentes incompatibles con sandbox).
+2. **Limpieza**: elimina Qt WebEngine, Qt libexec, herramientas CLI y symlinks rotos (causas comunes de rechazo en TestFlight, error 90885).
+3. **Info.plist**: inyecta `CFBundleIdentifier`, `CFBundleDisplayName`, versión y `LSMinimumSystemVersion`.
+4. **Icono**: convierte el SVG a `.icns` con `sips` + `iconutil` y lo incrusta.
+5. **Provisioning profile**: copia `embedded.provisionprofile` en el bundle.
+6. **Entitlements**: genera un `.plist` mínimo con `com.apple.security.app-sandbox` (CoreMIDI funciona en sandbox sin entitlements adicionales).
+7. **`codesign`**: firma con `--force --deep --timestamp`.
+8. **`productbuild`**: crea y firma el `.pkg` instalador.
+
+### Subir a App Store Connect
+
+```bash
+# Con Transporter (GUI) o por CLI:
+xcrun altool --upload-package PianoPilot-macos-appstore.pkg \
+  --type osx --apiKey TU_KEY --apiIssuer TU_ISSUER
+```
+
+O abre **Transporter.app**, arrastra el `.pkg` y pulsa *Deliver*.
+
+---
+
+## 4. Windows — EXE (distribución directa)
+
+**Job:** `build-windows` · Runner: `windows-latest`
+
+### Proceso
+
+1. `scripts/make_ico.py` genera `app_icon.ico` desde el SVG (requiere Pillow).
+2. PyInstaller con `--onefile --windowed --icon` produce un único `.exe`.
+3. Se renombra a `PianoPilot-for-FP30X-vX.Y.Z-windows.exe` y se sube como artefacto.
+
+---
+
+## 5. Windows — MSIX (Windows Store)
+
+**Job:** `build-msix` · Runner: `windows-latest`
+
+### Prerrequisito: secreto `MSIX_PUBLISHER`
+
+En **GitHub → Settings → Secrets and variables → Actions**, añade:
+
+| Secreto | Valor |
+|---------|-------|
+| `MSIX_PUBLISHER` | El Publisher CN de Partner Center, p. ej. `CN=E70C548D-768A-4F80-B0D6-41DB1F7A402F` |
+
+Se encuentra en **Partner Center → tu app → Product Identity**.
+
+### Proceso del job
+
+1. **`make_ico.py`**: genera el `.ico` para el ejecutable.
+2. **PyInstaller en modo carpeta** (sin `--onefile`): produce `dist/PianoPilot/` con `PianoPilot.exe` y la carpeta `_internal/` con todas las dependencias. El modo carpeta es necesario porque `--onefile` extrae a `%TEMP%` en cada ejecución, lo que puede conflictuar con las restricciones del sandbox de la Store.
+3. **`make_msix_assets.py`**: renderiza el SVG del icono a los 6 tamaños PNG requeridos por el Store:
+   - `Square44x44Logo.png` (44×44)
+   - `Square150x150Logo.png` (150×150)
+   - `Square310x310Logo.png` (310×310)
+   - `StoreLogo.png` (50×50)
+   - `Wide310x150Logo.png` (310×150) — SVG centrado con padding
+   - `SplashScreen.png` (620×300) — SVG centrado con padding
+4. **Ensamblado del layout**: copia `packaging/windows/AppxManifest.xml` e inyecta la versión (`vX.Y.Z` → `X.Y.Z.0`) y el Publisher CN (desde el secreto) mediante sustitución de texto en PowerShell.
+5. **`makeappx.exe`** (del Windows SDK): empaqueta la carpeta en un `.msix`.
+
+### Estructura del layout antes de empaquetar
+
+```
+dist/PianoPilot/
+  AppxManifest.xml        ← inyectado por CI
+  Assets/
+    Square44x44Logo.png
+    Square150x150Logo.png
+    Square310x310Logo.png
+    StoreLogo.png
+    Wide310x150Logo.png
+    SplashScreen.png
+  PianoPilot.exe
+  _internal/              ← dependencias PyInstaller
+    ...
+```
+
+### Subir a Partner Center
+
+1. En **Partner Center → tu app → Manage packages**, sube el `.msix`.
+2. Microsoft valida y firma el paquete por su cuenta antes de publicarlo.
+3. No es necesario firmar el `.msix` tú mismo para la subida al Store.
+
+---
+
+## 6. Bumping de versión antes de un release
+
+Antes de crear el tag, actualiza la versión en `pyproject.toml`:
+
+```toml
+[project]
+version = "1.2.3"
+```
+
+Luego:
+
+```bash
+git add pyproject.toml
+git commit -m "Bump version to 1.2.3"
+git tag v1.2.3
+git push origin main --tags
+```
+
+---
+
+## 7. Checklist de release
+
+- [ ] `pyproject.toml` tiene la versión correcta.
+- [ ] El build del CI pasa en verde (macOS DMG, Windows EXE, Windows MSIX).
+- [ ] El `.msix` se sube a Partner Center.
+- [ ] El `.pkg` MAS se genera localmente y se sube con Transporter.
+- [ ] `LICENSE` y `THIRD_PARTY_NOTICES.md` incluidos en el bundle / enlazados en el listing.
+- [ ] Revisión de privacidad (la app no envía datos a servidores; solo USB MIDI local).
+
+---
+
+## 8. Referencias
+
+- PyInstaller: <https://pyinstaller.org/>
+- MSIX overview: Microsoft Learn — "What is MSIX?"
+- makeappx: Windows SDK, `C:\Program Files (x86)\Windows Kits\10\bin\…\x64\makeappx.exe`
+- Mac App Store: App Store Review Guidelines, App Sandbox entitlements
+- Qt / PySide6 licensing (LGPL-3.0): <https://www.qt.io/licensing/>
