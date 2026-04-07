@@ -116,7 +116,7 @@ jobs:
         run: |
           pip install --upgrade pip
           pip install -e .
-          pip install pyinstaller
+          pip install pyinstaller pillow
 
       - name: Generate .ico icon
         run: python scripts/make_ico.py app_icon.ico
