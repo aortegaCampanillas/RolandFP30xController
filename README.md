@@ -1,6 +1,7 @@
 # Roland FP-30X Controller
 
-**Project page:** https://freemidichords.com/fp30x
+**Project page:** https://freemidichords.com/fp30x  
+**Microsoft Store:** [Get PianoPilot for FP-30X](https://apps.microsoft.com/detail/9mtt67vb0g74?ocid=webpdpshare)
 
 A **desktop application** for **macOS** and **Windows** that lets you **control your Roland FP-30X digital piano from your computer** over standard **USB MIDI** or **Bluetooth**. Adjust sounds, layers, metronome, tuning, and deep piano parameters from a single window—without reaching for the instrument’s panel for every change.
 
@@ -256,7 +257,7 @@ La interfaz está disponible en **español** e **inglés**.
 ---
 
 **Support URL:**  
-`https://[your-domain]/support`
+`https://freemidichords.com/fp30x`
 
 **Marketing URL (optional):**  
 `https://freemidichords.com/fp30x`
