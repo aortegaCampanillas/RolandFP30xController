@@ -27,7 +27,7 @@ ENV/
 
 # IDE / OS
 .idea/
-.vscode/
+.vscode/settings.json
 .DS_Store
 
 # Roland app reverse engineering artifacts

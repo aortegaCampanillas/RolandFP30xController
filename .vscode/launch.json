@@ -1,0 +1,21 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "PianoPilot",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "roland_fp30x_controller",
+      "args": [],
+      "justMyCode": true
+    },
+    {
+      "name": "PianoPilot (verbose)",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "roland_fp30x_controller",
+      "args": ["--verbose"],
+      "justMyCode": true
+    }
+  ]
+}
