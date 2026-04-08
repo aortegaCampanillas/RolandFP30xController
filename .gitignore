@@ -30,6 +30,9 @@ ENV/
 .vscode/settings.json
 .DS_Store
 
+# Claude Code — local settings only
+.claude/settings.local.json
+
 # Roland app reverse engineering artifacts
 docs/roland_piano_app/
 
